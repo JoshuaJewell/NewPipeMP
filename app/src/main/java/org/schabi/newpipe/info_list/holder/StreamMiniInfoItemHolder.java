@@ -18,8 +18,8 @@ import org.schabi.newpipe.util.DependentPreferenceHelper;
 import org.schabi.newpipe.util.Localization;
 import org.schabi.newpipe.util.OfflinePlaybackHelper;
 import org.schabi.newpipe.util.RatingHelper;
-import org.schabi.newpipe.util.image.PicassoHelper;
 import org.schabi.newpipe.util.StreamTypeUtil;
+import org.schabi.newpipe.util.image.CoilHelper;
 import org.schabi.newpipe.views.AnimatedProgressBar;
 
 import java.util.concurrent.TimeUnit;
@@ -93,7 +93,7 @@ public class StreamMiniInfoItemHolder extends InfoItemHolder {
         }
 
         // Default thumbnail is shown on error, while loading and if the url is empty
-        PicassoHelper.loadThumbnail(item.getThumbnails()).into(itemThumbnailView);
+        CoilHelper.INSTANCE.loadThumbnail(itemThumbnailView, item.getThumbnails());
 
         itemView.setOnClickListener(view -> {
             if (itemBuilder.getOnStreamSelectedListener() != null) {

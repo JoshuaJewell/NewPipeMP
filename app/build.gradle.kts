@@ -7,10 +7,10 @@ import com.android.build.api.dsl.ApplicationExtension
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.jetbrains.kotlin.android)
-    alias(libs.plugins.jetbrains.kotlin.kapt)
+    alias(libs.plugins.android.legacy.kapt)
     alias(libs.plugins.google.ksp)
     alias(libs.plugins.jetbrains.kotlin.parcelize)
+    alias(libs.plugins.jetbrains.kotlinx.serialization)
     alias(libs.plugins.sonarqube)
     checkstyle
 }
@@ -19,13 +19,8 @@ val gitWorkingBranch = providers.exec {
     commandLine("git", "rev-parse", "--abbrev-ref", "HEAD")
 }.standardOutput.asText.map { it.trim() }
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
-    }
-}
-
 kotlin {
+    jvmToolchain(21)
     compilerOptions {
         // TODO: Drop annotation default target when it is stable
         freeCompilerArgs.addAll(
@@ -35,18 +30,26 @@ kotlin {
 }
 
 configure<ApplicationExtension> {
-    compileSdk = 36
-    namespace = "org.schabi.newpipe"
+    compileSdk {
+        version = release(NEWPIPE_VERSION_SDK_COMPILE_MAJOR) {
+            minorApiLevel = NEWPIPE_VERSION_SDK_COMPILE_MINOR
+        }
+    }
+    namespace = NEWPIPE_APPLICATION_ID_OLD
 
     defaultConfig {
-        applicationId = "org.schabi.newpipe"
+        applicationId = NEWPIPE_APPLICATION_ID_OLD
         resValue("string", "app_name", "NewPipe")
-        minSdk = 21
-        targetSdk = 35
+        minSdk {
+            version = release(NEWPIPE_VERSION_SDK_MIN)
+        }
+        targetSdk {
+            version = release(NEWPIPE_VERSION_SDK_TARGET)
+        }
 
-        versionCode = System.getProperty("versionCodeOverride")?.toInt() ?: 1008
+        versionCode = System.getProperty("versionCodeOverride")?.toInt() ?: NEWPIPE_VERSION_CODE
 
-        versionName = "0.28.3"
+        versionName = NEWPIPE_VERSION_NAME
         System.getProperty("versionNameSuffix")?.let { versionNameSuffix = it }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -79,7 +82,7 @@ configure<ApplicationExtension> {
                 resValue("string", "app_name", "NewPipe $suffix")
             }
             isMinifyEnabled = true
-            isShrinkResources = false // disabled to fix F-Droid"s reproducible build
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -88,13 +91,9 @@ configure<ApplicationExtension> {
     }
 
     lint {
-        checkReleaseBuilds = false
-        // Or, if you prefer, you can continue to check for errors in release builds,
-        // but continue the build even when errors are found:
+        lintConfig = file("lint.xml")
+        // Continue the debug build even when errors are found
         abortOnError = false
-        // suppress false warning ("Resource IDs will be non-final in Android Gradle Plugin version
-        // 5.0, avoid using them in switch case statements"), which affects only library projects
-        disable += "NonConstantResourceId"
     }
 
     compileOptions {
@@ -139,13 +138,6 @@ ksp {
 
 // Custom dependency configuration for ktlint
 val ktlint by configurations.creating
-
-// https://checkstyle.org/#JRE_and_JDK
-tasks.withType<Checkstyle>().configureEach {
-    javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
 
 checkstyle {
     configDirectory = rootProject.file("checkstyle")
@@ -215,19 +207,19 @@ sonar {
 }
 
 dependencies {
-    /** Desugaring **/
+    // Desugaring
     coreLibraryDesugaring(libs.android.desugar)
 
-    /** NewPipe libraries **/
+    // NewPipe libraries
     implementation(libs.newpipe.nanojson)
     implementation(libs.newpipe.extractor)
     implementation(libs.newpipe.filepicker)
 
-    /** Checkstyle **/
+    // Checkstyle
     checkstyle(libs.puppycrawl.checkstyle)
     ktlint(libs.pinterest.ktlint)
 
-    /** AndroidX **/
+    // AndroidX
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.cardview)
     implementation(libs.androidx.constraintlayout)
@@ -250,7 +242,13 @@ dependencies {
     implementation(libs.google.android.material)
     implementation(libs.androidx.webkit)
 
-    /** Third-party libraries **/
+    // Coroutines interop
+    implementation(libs.kotlinx.coroutines.rx3)
+
+    // Kotlinx Serialization
+    implementation(libs.kotlinx.serialization.json)
+
+    // Third-party libraries
     implementation(libs.livefront.bridge)
     implementation(libs.evernote.statesaver.core)
     kapt(libs.evernote.statesaver.compiler)
@@ -276,7 +274,8 @@ dependencies {
     implementation(libs.lisawray.groupie.viewbinding)
 
     // Image loading
-    implementation(libs.squareup.picasso)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     // Markdown library for Android
     implementation(libs.noties.markwon.core)
@@ -302,8 +301,7 @@ dependencies {
     // Audio metadata tagging
     implementation("net.jthink:jaudiotagger:3.0.1")
 
-    /** Debugging **/
-    // Memory leak detection
+    // Debugging and memory leak detection
     debugImplementation(libs.squareup.leakcanary.watcher)
     debugImplementation(libs.squareup.leakcanary.plumber)
     debugImplementation(libs.squareup.leakcanary.core)
@@ -311,7 +309,7 @@ dependencies {
     debugImplementation(libs.facebook.stetho.core)
     debugImplementation(libs.facebook.stetho.okhttp3)
 
-    /** Testing **/
+    // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockito.core)
 

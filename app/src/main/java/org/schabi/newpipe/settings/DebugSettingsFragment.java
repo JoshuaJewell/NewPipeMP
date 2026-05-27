@@ -12,7 +12,6 @@ import org.schabi.newpipe.error.ErrorUtil;
 import org.schabi.newpipe.error.UserAction;
 import org.schabi.newpipe.local.feed.notifications.NotificationWorker;
 import org.schabi.newpipe.util.StreamMetadataRepair;
-import org.schabi.newpipe.util.image.PicassoHelper;
 
 import java.util.Optional;
 
@@ -32,8 +31,6 @@ public class DebugSettingsFragment extends BasePreferenceFragment {
                 requirePreference(R.string.allow_heap_dumping_key);
         final Preference showMemoryLeaksPreference =
                 requirePreference(R.string.show_memory_leaks_key);
-        final Preference showImageIndicatorsPreference =
-                requirePreference(R.string.show_image_indicators_key);
         final Preference checkNewStreamsPreference =
                 requirePreference(R.string.check_new_streams_key);
         final Preference crashTheAppPreference =
@@ -62,11 +59,6 @@ public class DebugSettingsFragment extends BasePreferenceFragment {
             allowHeapDumpingPreference.setSummary(R.string.leak_canary_not_available);
             showMemoryLeaksPreference.setSummary(R.string.leak_canary_not_available);
         }
-
-        showImageIndicatorsPreference.setOnPreferenceChangeListener((preference, newValue) -> {
-            PicassoHelper.setIndicatorsEnabled((Boolean) newValue);
-            return true;
-        });
 
         checkNewStreamsPreference.setOnPreferenceClickListener(preference -> {
             NotificationWorker.runNow(preference.getContext());

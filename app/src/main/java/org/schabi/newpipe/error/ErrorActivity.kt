@@ -25,6 +25,7 @@ import org.schabi.newpipe.databinding.ActivityErrorBinding
 import org.schabi.newpipe.util.Localization
 import org.schabi.newpipe.util.ThemeHelper
 import org.schabi.newpipe.util.external_communication.ShareUtils
+import org.schabi.newpipe.util.text.setTextWithLinks
 
 /**
  * This activity is used to show error details and allow reporting them in various ways.
@@ -100,7 +101,7 @@ class ErrorActivity : AppCompatActivity() {
 
         // normal bugreport
         buildInfo(errorInfo)
-        binding.errorMessageView.text = errorInfo.getMessage(this)
+        binding.errorMessageView.setTextWithLinks(errorInfo.getMessage(this))
         binding.errorView.text = formErrorText(errorInfo.stackTraces)
 
         // print stack trace once again for debugging:
@@ -228,24 +229,26 @@ class ErrorActivity : AppCompatActivity() {
 
                 // Collapse all logs to a single paragraph when there are more than one
                 // to keep the GitHub issue clean.
-                if (errorInfo.stackTraces.isNotEmpty()) {
+                if (errorInfo.stackTraces.size > 1) {
                     append("<details><summary><b>Exceptions (")
                     append(errorInfo.stackTraces.size)
                     append(")</b></summary><p>\n")
+                }
 
-                    // add the logs
-                    errorInfo.stackTraces.forEachIndexed { index, stacktrace ->
-                        append("<details><summary><b>Crash log ")
-                        if (errorInfo.stackTraces.isNotEmpty()) {
-                            append(index + 1)
-                        }
-                        append("</b>")
-                        append("</summary><p>\n")
-                        append("\n```\n${stacktrace}\n```\n")
-                        append("</details>\n")
+                // add the logs
+                errorInfo.stackTraces.forEachIndexed { index, stacktrace ->
+                    append("<details><summary><b>Crash log ")
+                    if (errorInfo.stackTraces.size > 1) {
+                        append(index + 1)
                     }
+                    append("</b>")
+                    append("</summary><p>\n")
+                    append("\n```\n${stacktrace}\n```\n")
+                    append("</details>\n")
+                }
 
-                    // make sure to close everything
+                // make sure to close everything
+                if (errorInfo.stackTraces.size > 1) {
                     append("</p></details>\n")
                 }
 
