@@ -40,6 +40,7 @@ import org.schabi.newpipe.util.StateSaver
 import org.schabi.newpipe.util.image.ImageStrategy
 import org.schabi.newpipe.util.image.PreferredImageQuality
 import org.schabi.newpipe.util.potoken.PoTokenProviderImpl
+import org.schabi.newpipe.util.rating.RatingBackfillJob
 
 /*
  * Copyright (C) Hans-Christoph Steiner 2016 <hans@eds.org>
@@ -124,6 +125,14 @@ open class App :
         configureRxJavaErrorHandler()
 
         YoutubeStreamExtractor.setPoTokenProvider(PoTokenProviderImpl)
+
+        // One-time migration: backfill the Room rating cache from any in-file
+        // rating tags. Idempotent; runs at most once per install.
+        RatingBackfillJob.runOnce(this)
+            .subscribe(
+                { /* done */ },
+                { e -> Log.w(TAG, "Rating backfill failed", e) }
+            )
     }
 
     override fun newImageLoader(context: Context): ImageLoader = ImageLoader

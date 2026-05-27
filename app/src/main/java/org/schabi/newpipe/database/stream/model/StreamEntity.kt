@@ -64,6 +64,21 @@ data class StreamEntity(
     @ColumnInfo(name = STREAM_IS_UPLOAD_DATE_APPROXIMATION)
     var isUploadDateApproximation: Boolean? = null,
 
+    /**
+     * Cache of the rating tag embedded in the audio file when one exists locally
+     * (POPM for MP3, RATING for Vorbis-flavoured containers, the iTunes RATING
+     * atom for M4A). The file is the source of truth (see acetate spec §3.1);
+     * this column tracks the current cached value. Null = unrated or no local
+     * file scanned yet.
+     *
+     * Maintained by:
+     *  - [org.schabi.newpipe.local.history.HistoryRecordManager.saveStreamRating]
+     *    writes both the file tag and this column on every rate.
+     *  - [org.schabi.newpipe.util.StreamMetadataRepair] re-reads the file tag
+     *    on each repair pass.
+     *  - [org.schabi.newpipe.util.rating.RatingBackfillJob] performs a one-time
+     *    backfill at first launch after the migration lands.
+     */
     @ColumnInfo(name = STREAM_USER_RATING)
     var userRating: Int? = null
 ) : Serializable {

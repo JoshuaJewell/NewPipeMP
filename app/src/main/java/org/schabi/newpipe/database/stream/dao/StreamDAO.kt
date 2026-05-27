@@ -15,6 +15,26 @@ import org.schabi.newpipe.database.stream.model.StreamEntity.Companion.STREAM_ID
 import org.schabi.newpipe.extractor.stream.StreamType
 import org.schabi.newpipe.util.StreamTypeUtil
 
+/**
+ * DAO note on `user_rating` (since the acetate integration landed in 2026-05):
+ *
+ * `streams.user_rating` is a CACHE of the in-file rating tag (POPM for MP3,
+ * RATING for Vorbis-flavoured containers, the iTunes RATING atom for M4A).
+ * The file is the source of truth.
+ *
+ *  - On rate: [org.schabi.newpipe.local.history.HistoryRecordManager.saveStreamRating]
+ *    writes the file tag first, then updates this cache.
+ *  - On metadata refresh: [upsert] preserves the cached rating from the
+ *    existing row (see [StreamCompareFeed]); [org.schabi.newpipe.util.StreamMetadataRepair]
+ *    re-reads the file tag from disk and re-writes this cache when it
+ *    processes a stream's offline mapping.
+ *  - On first launch after the migration:
+ *    [org.schabi.newpipe.util.rating.RatingBackfillJob] performs a one-time
+ *    backfill from any rating tags already present in downloaded files.
+ *
+ * See `acetate/docs/superpowers/specs/2026-05-12-digikam-for-music-design.md`
+ * §3.1 and §6.1 for the full contract.
+ */
 @Dao
 abstract class StreamDAO : BasicDAO<StreamEntity> {
     @Query("SELECT * FROM streams")
@@ -34,6 +54,9 @@ abstract class StreamDAO : BasicDAO<StreamEntity> {
 
     @Query("UPDATE streams SET user_rating = :rating WHERE uid = :streamId")
     abstract fun updateRating(streamId: Long, rating: Int?): Int
+
+    @Query("SELECT title FROM streams WHERE uid = :streamId")
+    abstract fun getTitleByIdBlocking(streamId: Long): String?
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     internal abstract fun silentInsertInternal(stream: StreamEntity): Long

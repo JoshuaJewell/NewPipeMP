@@ -123,6 +123,22 @@
     <string name="weighted_shuffle_unrated_weight_summary">Weight for unrated tracks (1-10, default: 10)</string>
     <string name="weighted_shuffle_curve_exponent_title">Shuffle curve exponent</string>
     <string name="weighted_shuffle_curve_exponent_summary">Curve steepness: 1.0=linear, 2.0=quadratic (default: 1.0)</string>
+    <string name="adaptive_shuffle_enabled_title">Adaptive shuffle (experimental)</string>
+    <string name="adaptive_shuffle_enabled_summary">A contextual bandit picks the next track from your listening history rather than reshuffling the queue. Takes precedence over weighted shuffle when on</string>
+    <string name="adaptive_shuffle_debug_screen_title">Adaptive shuffle internals</string>
+    <string name="adaptive_shuffle_debug_screen_summary">Inspect model weights and recent decisions</string>
+    <string name="adaptive_shuffle_exploit">Exploit</string>
+    <string name="adaptive_shuffle_explore">Explore</string>
+    <string name="adaptive_shuffle_rebuild">Rebuild from history</string>
+    <string name="adaptive_shuffle_rebuilt">Rebuilt from %1$d events</string>
+    <string name="adaptive_shuffle_no_events">No decisions recorded yet</string>
+    <string name="adaptive_shuffle_events_label">Events ingested: %1$d</string>
+    <string name="adaptive_shuffle_theta_label">Learnt weights (largest first)</string>
+    <string name="adaptive_shuffle_theta_caption">Positive numbers mean the feature predicts engagement; negative means it predicts a skip. Magnitude is influence on the next pick.</string>
+    <string name="adaptive_shuffle_recent_label">Recent decisions</string>
+    <string name="adaptive_shuffle_recent_caption">Newest first. EXPLOIT = picked for expected appeal; EXPLORE = picked to learn. R is the actual reward once the track resolved.</string>
+    <string name="adaptive_shuffle_unknown_title">Unknown track</string>
+    <string name="adaptive_shuffle_reward_pending">Awaiting</string>
     <string name="rating_statistics_title">Rating Statistics</string>
     <string name="rating_statistics_summary">View listening and rating statistics</string>
     <string name="stats_section_overall">Overall</string>

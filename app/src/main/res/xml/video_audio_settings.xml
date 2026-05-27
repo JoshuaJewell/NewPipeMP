@@ -265,6 +265,14 @@
             app:singleLineTitle="false"
             app:iconSpaceReserved="false" />
 
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="@string/adaptive_shuffle_enabled_key"
+            android:summary="@string/adaptive_shuffle_enabled_summary"
+            android:title="@string/adaptive_shuffle_enabled_title"
+            app:singleLineTitle="false"
+            app:iconSpaceReserved="false" />
+
         <ListPreference
             android:defaultValue="10"
             android:entries="@array/weighted_shuffle_unrated_weight_description"

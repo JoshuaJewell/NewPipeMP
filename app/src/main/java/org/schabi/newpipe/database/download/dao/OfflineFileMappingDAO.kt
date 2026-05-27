@@ -63,4 +63,23 @@ interface OfflineFileMappingDAO {
      */
     @Query("SELECT * FROM offline_file_mappings WHERE is_available = 1")
     fun getAllAvailableMappings(): Flowable<List<OfflineFileMappingEntity>>
+
+    /**
+     * Synchronous variant of [getMapping] used by callers that already run
+     * on a background thread and need a single value, not a stream.
+     * Returns null when no mapping exists.
+     */
+    @Query(
+        "SELECT * FROM offline_file_mappings " +
+            "WHERE stream_service_id = :serviceId AND stream_url = :url " +
+            "LIMIT 1"
+    )
+    fun getByStreamUrlBlocking(serviceId: Int, url: String): OfflineFileMappingEntity?
+
+    /**
+     * Synchronous list of every mapping, used by the one-time
+     * [org.schabi.newpipe.util.rating.RatingBackfillJob] migration.
+     */
+    @Query("SELECT * FROM offline_file_mappings")
+    fun getAllBlocking(): List<OfflineFileMappingEntity>
 }

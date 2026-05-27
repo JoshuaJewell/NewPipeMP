@@ -13,11 +13,9 @@ import org.schabi.newpipe.database.download.dao.OfflineFileMappingDAO;
 import org.schabi.newpipe.database.download.model.OfflineFileMappingEntity;
 import org.schabi.newpipe.database.stream.dao.StreamDAO;
 import org.schabi.newpipe.database.stream.model.StreamEntity;
-import org.schabi.newpipe.extractor.Image;
 
 import java.io.File;
 import java.io.FileOutputStream;
-import java.util.ArrayList;
 import java.util.List;
 
 import io.reactivex.rxjava3.core.Single;
@@ -30,6 +28,18 @@ import io.reactivex.rxjava3.schedulers.Schedulers;
  */
 public final class StreamMetadataRepair {
     private static final String TAG = "StreamMetadataRepair";
+
+    /**
+     * Reads the rating tag from a local audio file. The file is the source of
+     * truth for ratings; {@code streams.user_rating} is a cache.
+     *
+     * @param file the local audio file to read the rating tag from
+     * @return the 1..10 rating, or null on absence, unsupported container, or
+     *         parse failure (never throws)
+     */
+    public static Integer readRatingFromFile(@NonNull final java.io.File file) {
+        return org.schabi.newpipe.util.rating.RatingTagReader.INSTANCE.read(file);
+    }
 
     private StreamMetadataRepair() {
         // Utility class
@@ -126,6 +136,24 @@ public final class StreamMetadataRepair {
                         streamDAO.upsert(entity);
                         repairedCount++;
                         Log.i(TAG, "Successfully repaired metadata for: " + entity.getTitle());
+                    }
+
+                    // Sync the in-file rating tag into the Room cache. The file
+                    // is the source of truth (see acetate spec §3.1); Room is a
+                    // cache. file:// URIs only; SAF (content://) is out of
+                    // scope for this plan.
+                    final android.net.Uri uri = android.net.Uri.parse(fileUri);
+                    if (uri.getPath() != null
+                            && "file".equals(uri.getScheme())) {
+                        final Integer fileRating = readRatingFromFile(
+                                new java.io.File(uri.getPath()));
+                        if (fileRating != null
+                                && !fileRating.equals(entity.getUserRating())) {
+                            final long sid = streamDAO.upsert(entity);
+                            streamDAO.updateRating(sid, fileRating);
+                            Log.i(TAG, "Synced rating tag (" + fileRating
+                                    + ") from file for: " + entity.getTitle());
+                        }
                     }
                 } catch (final Exception e) {
                     Log.e(TAG, "Error repairing metadata for mapping: "
@@ -226,7 +254,7 @@ public final class StreamMetadataRepair {
     /**
      * Result of metadata extraction from a file.
      */
-    private static class MetadataExtractionResult {
+    private static final class MetadataExtractionResult {
         String title;
         String artist;
         String album;

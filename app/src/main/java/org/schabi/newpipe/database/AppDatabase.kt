@@ -9,6 +9,11 @@ package org.schabi.newpipe.database
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import org.schabi.newpipe.database.adaptive.AdaptiveShuffleFeatureQueriesDAO
+import org.schabi.newpipe.database.adaptive.AdaptiveShuffleModelStateDAO
+import org.schabi.newpipe.database.adaptive.AdaptiveShuffleModelStateEntity
+import org.schabi.newpipe.database.adaptive.AdaptiveShufflePendingEventDAO
+import org.schabi.newpipe.database.adaptive.AdaptiveShufflePendingEventEntity
 import org.schabi.newpipe.database.download.dao.OfflineFileMappingDAO
 import org.schabi.newpipe.database.download.model.OfflineFileMappingEntity
 import org.schabi.newpipe.database.feed.dao.FeedDAO
@@ -38,7 +43,7 @@ import org.schabi.newpipe.database.subscription.SubscriptionEntity
 
 @TypeConverters(Converters::class)
 @Database(
-    version = Migrations.DB_VER_13,
+    version = Migrations.DB_VER_14,
     entities = [
         SubscriptionEntity::class,
         SearchHistoryEntry::class,
@@ -53,7 +58,9 @@ import org.schabi.newpipe.database.subscription.SubscriptionEntity
         FeedGroupSubscriptionEntity::class,
         FeedLastUpdatedEntity::class,
         OfflineFileMappingEntity::class,
-        PlaybackStatisticsEntity::class
+        PlaybackStatisticsEntity::class,
+        AdaptiveShuffleModelStateEntity::class,
+        AdaptiveShufflePendingEventEntity::class
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -69,6 +76,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun subscriptionDAO(): SubscriptionDAO
     abstract fun offlineFileMappingDAO(): OfflineFileMappingDAO
     abstract fun playbackStatisticsDAO(): PlaybackStatisticsDAO
+    abstract fun adaptiveShuffleModelStateDAO(): AdaptiveShuffleModelStateDAO
+    abstract fun adaptiveShufflePendingEventDAO(): AdaptiveShufflePendingEventDAO
+    abstract fun adaptiveShuffleFeatureQueriesDAO(): AdaptiveShuffleFeatureQueriesDAO
 
     companion object {
         const val DATABASE_NAME: String = "newpipe.db"

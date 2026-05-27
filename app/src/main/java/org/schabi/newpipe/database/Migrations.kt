@@ -33,6 +33,7 @@ object Migrations {
     const val DB_VER_11 = 11
     const val DB_VER_12 = 12
     const val DB_VER_13 = 13
+    const val DB_VER_14 = 14
 
     private val TAG = Migrations::class.java.getName()
     private val isDebug = MainActivity.DEBUG
@@ -440,6 +441,45 @@ object Migrations {
 
         if (isDebug) {
             Log.d(TAG, "Finished migrating database from v12 to v13")
+        }
+    }
+
+    val MIGRATION_13_14 = Migration(DB_VER_13, DB_VER_14) { db ->
+        if (isDebug) {
+            Log.d(TAG, "Start migrating database from v13 to v14")
+        }
+
+        // Adaptive shuffle persisted model state (singleton row).
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `adaptive_shuffle_model_state` " +
+                "(`id` INTEGER NOT NULL, `model_version` INTEGER NOT NULL, " +
+                "`feature_schema_hash` TEXT NOT NULL, `linucb_blob` BLOB NOT NULL, " +
+                "`scaler_blob` BLOB NOT NULL, `n_events` INTEGER NOT NULL, " +
+                "`updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+        )
+
+        // Pending decisions awaiting reward resolution. Source of truth for off-policy replay.
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `adaptive_shuffle_pending_events` " +
+                "(`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`stream_id` INTEGER NOT NULL, `chosen_at` INTEGER NOT NULL, " +
+                "`feature_vector_blob` BLOB NOT NULL, `raw_inputs_blob` BLOB NOT NULL, " +
+                "`predicted_reward` REAL NOT NULL, `uncertainty` REAL NOT NULL, " +
+                "`candidate_count` INTEGER NOT NULL, " +
+                "`resolved` INTEGER NOT NULL DEFAULT 0, " +
+                "`reward` REAL, `resolved_at` INTEGER)"
+        )
+        db.execSQL(
+            "CREATE  INDEX `index_adaptive_shuffle_pending_events_resolved` " +
+                "ON `adaptive_shuffle_pending_events` (`resolved`)"
+        )
+        db.execSQL(
+            "CREATE  INDEX `index_adaptive_shuffle_pending_events_chosen_at` " +
+                "ON `adaptive_shuffle_pending_events` (`chosen_at`)"
+        )
+
+        if (isDebug) {
+            Log.d(TAG, "Finished migrating database from v13 to v14")
         }
     }
 }

@@ -84,6 +84,9 @@ import com.google.android.exoplayer2.video.VideoSize;
 
 import org.schabi.newpipe.MainActivity;
 import org.schabi.newpipe.R;
+import org.schabi.newpipe.adaptive.AdaptivePlayerIntegration;
+import org.schabi.newpipe.adaptive.AdaptiveShuffleHolder;
+import org.schabi.newpipe.adaptive.QueueOrigin;
 import org.schabi.newpipe.databinding.PlayerBinding;
 import org.schabi.newpipe.error.ErrorInfo;
 import org.schabi.newpipe.error.ErrorUtil;
@@ -1284,11 +1287,87 @@ public final class Player implements PlaybackListener, Listener {
         UIs.call(PlayerUi::onCompleted);
 
         if (playQueue.getIndex() < playQueue.size() - 1) {
-            playQueue.offsetIndex(+1);
+            if (isAdaptiveShuffleEnabled() && simpleExoPlayer != null
+                    && simpleExoPlayer.getShuffleModeEnabled()) {
+                advanceQueueWithAdaptiveSelection();
+            } else {
+                playQueue.offsetIndex(+1);
+            }
         }
         if (isProgressLoopRunning()) {
             stopProgressLoop();
         }
+    }
+
+    //## Adaptive shuffle integration
+    private boolean isAdaptiveShuffleEnabled() {
+        return prefs.getBoolean(
+                context.getString(R.string.adaptive_shuffle_enabled_key), false);
+    }
+
+    private void adaptiveResolveAndPrePick(final long endedStreamId, final long endedDuration) {
+        // Inter-track auto transition: ExoPlayer has already moved on. Resolve the
+        // just-ended track and pre-populate the slot AFTER the now-current track with
+        // the engine's pick, so the next auto-advance lands on the engine's choice.
+        databaseUpdateDisposable.add(
+            Single.fromCallable(() -> {
+                final AdaptivePlayerIntegration integration =
+                        AdaptiveShuffleHolder.INSTANCE.get(context);
+                integration.ensureInitialised();
+                if (endedStreamId > 0 && endedDuration > 0) {
+                    integration.onTrackResolution(endedStreamId, endedDuration, endedDuration);
+                }
+                final Integer next = integration.pickNextIndex(playQueue, QueueOrigin.OTHER, 30);
+                return next == null ? -1 : next;
+            })
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .onErrorReturnItem(-1)
+            .subscribe(chosenIdx -> {
+                if (playQueue == null || chosenIdx == null) {
+                    return;
+                }
+                final int currentIdx = playQueue.getIndex();
+                if (chosenIdx > currentIdx + 1 && chosenIdx < playQueue.size()) {
+                    playQueue.move(chosenIdx, currentIdx + 1);
+                }
+            })
+        );
+    }
+
+    private void advanceQueueWithAdaptiveSelection() {
+        final long streamId = currentStreamDatabaseId;
+        final long progress = exoPlayerIsNull() ? 0L : simpleExoPlayer.getCurrentPosition();
+        final long duration = currentStreamDuration;
+        final QueueOrigin origin = QueueOrigin.OTHER;
+        databaseUpdateDisposable.add(
+            Single.fromCallable(() -> {
+                final AdaptivePlayerIntegration integration =
+                        AdaptiveShuffleHolder.INSTANCE.get(context);
+                integration.ensureInitialised();
+                if (streamId > 0 && duration > 0) {
+                    integration.onTrackResolution(streamId, progress, duration);
+                }
+                final Integer next = integration.pickNextIndex(playQueue, origin, 30);
+                return next == null ? -1 : next;
+            })
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .onErrorReturnItem(-1)
+            .subscribe(chosenIdx -> {
+                if (playQueue == null) {
+                    return;
+                }
+                final int currentIdx = playQueue.getIndex();
+                if (chosenIdx != null && chosenIdx > currentIdx + 1
+                        && chosenIdx < playQueue.size()) {
+                    playQueue.move(chosenIdx, currentIdx + 1);
+                }
+                if (playQueue.getIndex() < playQueue.size() - 1) {
+                    playQueue.offsetIndex(+1);
+                }
+            })
+        );
     }
     //endregion
 
@@ -1342,13 +1421,17 @@ public final class Player implements PlaybackListener, Listener {
 
         if (playQueue != null) {
             if (shuffleModeEnabled) {
-                // Check if weighted shuffle is enabled in settings
-                final boolean useWeightedShuffle = prefs.getBoolean(
-                        context.getString(R.string.use_weighted_shuffle_key), true);
-                if (useWeightedShuffle) {
-                    playQueue.weightedShuffle(context);
-                } else {
-                    playQueue.shuffle();
+                // Adaptive shuffle handles ordering inside
+                // advanceQueueWithAdaptiveSelection at each track end; only the
+                // non-adaptive branch needs an up-front reorder.
+                if (!isAdaptiveShuffleEnabled()) {
+                    final boolean useWeightedShuffle = prefs.getBoolean(
+                            context.getString(R.string.use_weighted_shuffle_key), true);
+                    if (useWeightedShuffle) {
+                        playQueue.weightedShuffle(context);
+                    } else {
+                        playQueue.shuffle();
+                    }
                 }
             } else {
                 playQueue.unshuffle();
@@ -1543,7 +1626,14 @@ public final class Player implements PlaybackListener, Listener {
                         saveAccumulatedPlayTime(false);
                     }
                     saveStreamProgressStateCompleted(); // current stream has ended
+                    final long endedStreamId = currentStreamDatabaseId;
+                    final long endedDuration = currentStreamDuration;
                     playQueue.setIndex(newIndex);
+                    if (isAutoTransition && isAdaptiveShuffleEnabled()
+                            && !exoPlayerIsNull()
+                            && simpleExoPlayer.getShuffleModeEnabled()) {
+                        adaptiveResolveAndPrePick(endedStreamId, endedDuration);
+                    }
                 }
                 break;
             case DISCONTINUITY_REASON_SKIP:
@@ -1904,7 +1994,13 @@ public final class Player implements PlaybackListener, Listener {
         }
 
         saveStreamProgressState();
-        playQueue.offsetIndex(+1);
+        if (isAdaptiveShuffleEnabled() && !exoPlayerIsNull()
+                && simpleExoPlayer.getShuffleModeEnabled()
+                && playQueue.getIndex() < playQueue.size() - 1) {
+            advanceQueueWithAdaptiveSelection();
+        } else {
+            playQueue.offsetIndex(+1);
+        }
         triggerProgressUpdate();
     }
 

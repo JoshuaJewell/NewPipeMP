@@ -135,7 +135,8 @@ public final class BulkDownloadInitiator {
         // Bind to DownloadManagerService and start queueing downloads
         final Intent intent = new Intent(context, DownloadManagerService.class);
         final ServiceConnection[] connection = new ServiceConnection[1];
-        final android.os.Handler timeoutHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        final android.os.Handler timeoutHandler =
+                new android.os.Handler(android.os.Looper.getMainLooper());
         final boolean[] isConnected = {false};
 
         // Timeout runnable - unbind if service doesn't connect within 5 seconds
@@ -498,7 +499,9 @@ public final class BulkDownloadInitiator {
                     + ", Artist: " + artist
                     + ", Thumbnail: " + (streamThumbnailUrl != null ? streamThumbnailUrl : "null"));
 
-                // Create composite post-processing: format conversion + metadata tagging
+                // Create composite post-processing: format conversion + metadata tagging.
+                // The container-kind argument lets AudioMetadataTagging pick the right
+                // temp-file extension (and route .opus through OpusTagEditor).
                 psName = Postprocessing.ALGORITHM_COMPOSITE;
                 psArgs = new String[] {
                     formatConversionAlgorithm,
@@ -507,7 +510,8 @@ public final class BulkDownloadInitiator {
                     playlistName,
                     artist,
                     title,
-                    streamThumbnailUrl != null ? streamThumbnailUrl : ""
+                    streamThumbnailUrl != null ? streamThumbnailUrl : "",
+                    containerKindFor(format)
                 };
             } else {
                 psArgs = null;
@@ -763,6 +767,33 @@ public final class BulkDownloadInitiator {
         cleaned = cleaned.replaceAll("(?i)\\s*Official$", "");
 
         return cleaned.trim();
+    }
+
+    /**
+     * Returns the container-kind string used by {@link
+     * us.shandian.giga.postprocessing.AudioMetadataTagging} to pick the right
+     * tag dialect and temp-file extension.
+     *
+     * @param format the chosen audio {@link MediaFormat}, or null
+     * @return one of "opus", "flac", "mp3", or "m4a" (the default fallback)
+     */
+    private static String containerKindFor(final MediaFormat format) {
+        if (format == null) {
+            return "m4a";
+        }
+        final String name = format.getName() != null
+                ? format.getName().toLowerCase(java.util.Locale.ROOT)
+                : "";
+        if (name.contains("opus") || name.contains("webma")) {
+            return "opus";
+        }
+        if (name.contains("flac")) {
+            return "flac";
+        }
+        if (name.contains("mp3")) {
+            return "mp3";
+        }
+        return "m4a";
     }
 
     /**

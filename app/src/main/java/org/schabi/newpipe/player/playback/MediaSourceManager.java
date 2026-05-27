@@ -495,7 +495,13 @@ public class MediaSourceManager {
                         )
                         .orElseGet(() -> {
                             final String message = "Unable to resolve source from "
-                                    + "stream info. URL: " + stream.getUrl();
+                                    + "stream info. URL: " + stream.getUrl()
+                                    + ", audio streams: "
+                                    + streamInfo.getAudioStreams().size()
+                                    + ", video-only streams: "
+                                    + streamInfo.getVideoOnlyStreams().size()
+                                    + ", video streams: "
+                                    + streamInfo.getVideoStreams().size();
                             return FailedMediaSource.of(stream,
                                     new MediaSourceResolutionException(message));
                         })

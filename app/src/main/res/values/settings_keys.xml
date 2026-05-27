@@ -26,6 +26,9 @@
     <string name="use_weighted_shuffle_key">use_weighted_shuffle_key</string>
     <string name="weighted_shuffle_unrated_weight_key">weighted_shuffle_unrated_weight_key</string>
     <string name="weighted_shuffle_curve_exponent_key">weighted_shuffle_curve_exponent_key</string>
+    <string name="adaptive_shuffle_enabled_key">adaptive_shuffle_enabled_key</string>
+    <string name="adaptive_shuffle_debug_view_enabled_key">adaptive_shuffle_debug_view_enabled_key</string>
+    <string name="adaptive_shuffle_debug_screen_key">adaptive_shuffle_debug_screen_key</string>
     <string name="rating_statistics_key">rating_statistics_key</string>
 
     <string-array name="weighted_shuffle_unrated_weight_description">

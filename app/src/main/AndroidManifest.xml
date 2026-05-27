@@ -101,6 +101,11 @@
             android:exported="false"
             android:label="@string/rating_statistics_title" />
 
+        <activity
+            android:name=".adaptive.ui.AdaptiveShuffleDebugActivity"
+            android:exported="false"
+            android:label="@string/adaptive_shuffle_debug_screen_title" />
+
         <service
             android:name=".local.feed.service.FeedLoadService"
             android:foregroundServiceType="dataSync" />

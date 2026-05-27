@@ -66,6 +66,8 @@ public class HistoryRecordManager {
     private final SearchHistoryDAO searchHistoryTable;
     private final StreamStateDAO streamStateTable;
     private final PlaybackStatisticsDAO playbackStatisticsTable;
+    private final org.schabi.newpipe.database.download.dao.OfflineFileMappingDAO
+            offlineFileMappingTable;
     private final SharedPreferences sharedPreferences;
     private final String searchHistoryKey;
     private final String streamHistoryKey;
@@ -77,6 +79,7 @@ public class HistoryRecordManager {
         searchHistoryTable = database.searchHistoryDAO();
         streamStateTable = database.streamStateDAO();
         playbackStatisticsTable = database.playbackStatisticsDAO();
+        offlineFileMappingTable = database.offlineFileMappingDAO();
         sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
         searchHistoryKey = context.getString(R.string.enable_search_history_key);
         streamHistoryKey = context.getString(R.string.enable_watch_history_key);
@@ -328,10 +331,46 @@ public class HistoryRecordManager {
                     "Rating must be between 1 and 10"));
         }
 
-        return Completable.fromAction(() -> database.runInTransaction(() -> {
-            final long streamId = streamTable.upsert(new StreamEntity(info));
-            streamTable.updateRating(streamId, rating);
-        })).subscribeOn(Schedulers.io());
+        return Completable.fromAction(() -> {
+            // 1. Update the Room cache.
+            database.runInTransaction(() -> {
+                final long streamId = streamTable.upsert(new StreamEntity(info));
+                streamTable.updateRating(streamId, rating);
+            });
+            // 2. Mirror the rating into the audio file's container-appropriate
+            //    tag if a local file is mapped. Failures don't propagate; the
+            //    Room cache remains the fallback truth. See acetate spec §3.1.
+            final org.schabi.newpipe.database.download.model.OfflineFileMappingEntity mapping =
+                    offlineFileMappingTable.getByStreamUrlBlocking(
+                            info.getServiceId(), info.getUrl());
+            if (mapping != null) {
+                final android.net.Uri uri = android.net.Uri.parse(mapping.getLocalFileUri());
+                if ("file".equals(uri.getScheme()) && uri.getPath() != null) {
+                    writeRatingToFileIfMapped(new java.io.File(uri.getPath()), rating);
+                }
+                // content:// URIs (SAF) need ContentResolver + DocumentFile; out of
+                // scope for this plan, which targets file:// only.
+            }
+        }).subscribeOn(Schedulers.io());
+    }
+
+    /**
+     * Writes [rating] (or null to clear) to the audio file's
+     * container-appropriate tag via {@link
+     * org.schabi.newpipe.util.rating.RatingTagWriter}. Static so it's
+     * testable without a HistoryRecordManager instance.
+     *
+     * @param file   the local audio file to write the rating tag into
+     * @param rating the 1..10 rating, or null to clear it
+     * @return true on success, false on any failure (the Room cache is the
+     *         surviving source of truth in that case).
+     */
+    public static boolean writeRatingToFileIfMapped(@NonNull final java.io.File file,
+                                                     final Integer rating) {
+        if (!file.isFile()) {
+            return false;
+        }
+        return org.schabi.newpipe.util.rating.RatingTagWriter.writeOrFalse(file, rating);
     }
 
     /**

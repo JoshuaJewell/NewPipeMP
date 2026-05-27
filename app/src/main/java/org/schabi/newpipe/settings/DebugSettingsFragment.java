@@ -7,6 +7,7 @@ import android.widget.Toast;
 import androidx.preference.Preference;
 
 import org.schabi.newpipe.R;
+import org.schabi.newpipe.adaptive.ui.AdaptiveShuffleDebugActivity;
 import org.schabi.newpipe.error.ErrorInfo;
 import org.schabi.newpipe.error.ErrorUtil;
 import org.schabi.newpipe.error.UserAction;
@@ -78,6 +79,13 @@ public class DebugSettingsFragment extends BasePreferenceFragment {
         createErrorNotificationPreference.setOnPreferenceClickListener(preference -> {
             ErrorUtil.createNotification(requireContext(),
                     new ErrorInfo(new RuntimeException(DUMMY), UserAction.UI_ERROR, DUMMY));
+            return true;
+        });
+
+        final Preference adaptiveShuffleDebugPreference =
+                requirePreference(R.string.adaptive_shuffle_debug_screen_key);
+        adaptiveShuffleDebugPreference.setOnPreferenceClickListener(preference -> {
+            startActivity(new Intent(requireContext(), AdaptiveShuffleDebugActivity.class));
             return true;
         });
 

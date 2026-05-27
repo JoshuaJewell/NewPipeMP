@@ -300,9 +300,10 @@ public final class ExtractorHelper {
         return Maybe.defer(() -> {
             try {
                 // Check if an offline file exists for this stream
-                final android.content.Context context = App.getApp();
-                final Boolean hasOffline = OfflinePlaybackHelper.hasOfflineFile(context, serviceId, url)
-                    .blockingGet();
+                final android.content.Context context = App.getInstance();
+                final Boolean hasOffline = OfflinePlaybackHelper
+                        .hasOfflineFile(context, serviceId, url)
+                        .blockingGet();
                 if (!hasOffline) {
                     return Maybe.empty();
                 }

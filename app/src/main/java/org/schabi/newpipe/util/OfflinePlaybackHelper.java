@@ -190,7 +190,7 @@ public final class OfflinePlaybackHelper {
             if ("content".equals(fileUri.getScheme())) {
                 final androidx.documentfile.provider.DocumentFile docFile =
                     androidx.documentfile.provider.DocumentFile.fromSingleUri(
-                        org.schabi.newpipe.App.getApp(), fileUri);
+                        org.schabi.newpipe.App.getInstance(), fileUri);
                 return docFile != null && docFile.exists() && docFile.length() > 0;
             }
 
