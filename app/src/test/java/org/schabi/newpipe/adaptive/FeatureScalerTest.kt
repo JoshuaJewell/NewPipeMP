@@ -47,6 +47,16 @@ class FeatureScalerTest {
         assertEquals(0.0, out[1], 1e-12)
     }
 
+    @Test fun `a feature with no spread yet does not blow up the next new value`() {
+        // Two identical observations give a variance of exactly zero. The next distinct
+        // value must stay on a usable scale rather than being divided by almost nothing.
+        val s = FeatureScaler(intArrayOf(0))
+        s.observe(doubleArrayOf(3.0))
+        s.observe(doubleArrayOf(3.0))
+        assertEquals(0.0, s.transform(doubleArrayOf(3.0))[0], 0.0)
+        assertEquals(0.5 / FeatureScaler.MIN_STD, s.transform(doubleArrayOf(3.5))[0], 1e-12)
+    }
+
     @Test fun `serialisation round trip preserves running statistics`() {
         val original = FeatureScaler(intArrayOf(0))
         for (x in doubleArrayOf(1.0, 2.0, 3.0, 4.0, 5.0)) {

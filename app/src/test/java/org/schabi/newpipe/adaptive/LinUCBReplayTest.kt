@@ -5,7 +5,6 @@
 package org.schabi.newpipe.adaptive
 
 import java.util.Random
-import kotlin.math.sqrt
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -44,9 +43,9 @@ class LinUCBReplayTest {
         val trainMean = train.map { it.reward }.average()
         val predictedMean = DoubleArray(heldOut.size) { trainMean }
 
-        val rhoLinUcb = spearman(predictedLinUcb, actuals)
-        val rhoRandom = spearman(predictedRandom, actuals)
-        val rhoMean = spearman(predictedMean, actuals)
+        val rhoLinUcb = ReplayHarness.spearman(predictedLinUcb, actuals)
+        val rhoRandom = ReplayHarness.spearman(predictedRandom, actuals)
+        val rhoMean = ReplayHarness.spearman(predictedMean, actuals)
 
         // Both baselines produce constant predictions and so have undefined Spearman; we
         // implement them as 0. LinUCB should pick up the linear signal and clear that bar
@@ -69,45 +68,5 @@ class LinUCBReplayTest {
         var s = 0.0
         for (i in a.indices) s += a[i] * b[i]
         return s
-    }
-
-    private fun spearman(a: DoubleArray, b: DoubleArray): Double {
-        require(a.size == b.size && a.isNotEmpty())
-        val ra = ranks(a)
-        val rb = ranks(b)
-        return pearson(ra, rb)
-    }
-
-    private fun ranks(xs: DoubleArray): DoubleArray {
-        val n = xs.size
-        val order = (0 until n).sortedBy { xs[it] }
-        val out = DoubleArray(n)
-        var i = 0
-        while (i < n) {
-            var j = i
-            while (j + 1 < n && xs[order[j + 1]] == xs[order[i]]) j += 1
-            val avg = (i + j) / 2.0 + 1.0
-            for (k in i..j) out[order[k]] = avg
-            i = j + 1
-        }
-        return out
-    }
-
-    private fun pearson(a: DoubleArray, b: DoubleArray): Double {
-        val n = a.size
-        val ma = a.average()
-        val mb = b.average()
-        var num = 0.0
-        var da = 0.0
-        var db = 0.0
-        for (i in 0 until n) {
-            val ax = a[i] - ma
-            val bx = b[i] - mb
-            num += ax * bx
-            da += ax * ax
-            db += bx * bx
-        }
-        val denom = sqrt(da * db)
-        return if (denom == 0.0) 0.0 else num / denom
     }
 }

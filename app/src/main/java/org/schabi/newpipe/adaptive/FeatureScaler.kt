@@ -38,7 +38,10 @@ class FeatureScaler private constructor(
             val idx = scaledIndices[k]
             if (counts[k] < 2L) continue
             val variance = m2s[k] / (counts[k] - 1L)
-            val std = sqrt(variance) + EPSILON
+            // Floored: while every value seen so far is (nearly) identical the variance is
+            // zero, and dividing by it would blow the next different value up by orders of
+            // magnitude, enough to wreck the model's matrix in a single update.
+            val std = maxOf(sqrt(variance), MIN_STD)
             out[idx] = (out[idx] - means[k]) / std
         }
         return out
@@ -60,7 +63,10 @@ class FeatureScaler private constructor(
     }
 
     companion object {
-        const val EPSILON: Double = 1e-8
+        // Caps the amplification of an unseen value at 1000x. Small enough to leave any
+        // real spread untouched, large enough that one update cannot push the model's
+        // matrix past what double precision can invert (it used to be 1e-8, which could).
+        const val MIN_STD: Double = 1e-3
 
         fun fromByteArray(bytes: ByteArray): FeatureScaler {
             val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
