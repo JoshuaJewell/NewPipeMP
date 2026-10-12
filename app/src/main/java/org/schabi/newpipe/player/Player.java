@@ -86,6 +86,7 @@ import org.schabi.newpipe.MainActivity;
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.adaptive.AdaptivePlayerIntegration;
 import org.schabi.newpipe.adaptive.AdaptiveShuffleHolder;
+import org.schabi.newpipe.adaptive.ShuffleSession;
 import org.schabi.newpipe.databinding.PlayerBinding;
 import org.schabi.newpipe.error.ErrorInfo;
 import org.schabi.newpipe.error.ErrorUtil;
@@ -112,6 +113,9 @@ import org.schabi.newpipe.player.playback.PlaybackListener;
 import org.schabi.newpipe.player.playqueue.PlayQueue;
 import org.schabi.newpipe.player.playqueue.PlayQueueItem;
 import org.schabi.newpipe.player.playqueue.SinglePlayQueue;
+import org.schabi.newpipe.player.mediasource.FailedMediaSource;
+import org.schabi.newpipe.player.playback.ListenJudge;
+import org.schabi.newpipe.player.playback.PlaybackFailurePolicy;
 import org.schabi.newpipe.player.resolver.AudioPlaybackResolver;
 import org.schabi.newpipe.player.resolver.VideoPlaybackResolver;
 import org.schabi.newpipe.player.resolver.VideoPlaybackResolver.SourceType;
@@ -245,6 +249,32 @@ public final class Player implements PlaybackListener, Listener {
     private long accumulatedPlayTimeMillis = 0;
     private long currentStreamDatabaseId = -1;
     private long currentStreamDuration = 0;
+    // The current listen carries no signal (see ListenJudge), so leaving it records nothing.
+    private boolean currentListenUnjudged = false;
+    // The queue item that flag was set for; it survives the item's own metadata arriving.
+    @Nullable
+    private PlayQueueItem unjudgedItem = null;
+    // The current listen has already been recorded; guards against a second discontinuity
+    // arriving before the next track's metadata.
+    private boolean currentListenClosed = false;
+    // The first item played from the current queue, for the shuffle start grace.
+    @Nullable
+    private PlayQueueItem queueStartItem = null;
+
+    /*//////////////////////////////////////////////////////////////////////////
+    // Adaptive shuffle and failure handling
+    //////////////////////////////////////////////////////////////////////////*/
+
+    // The current item for which an adaptive pick has been requested; one pick per item.
+    @Nullable
+    private PlayQueueItem adaptivePrePickAnchor = null;
+    // The current item for which that pick has been placed after it.
+    @Nullable
+    private PlayQueueItem adaptivePrePickPlaced = null;
+    // An item the user asked to play next; adaptive shuffle must not push it back.
+    @Nullable
+    private PlayQueueItem userQueuedNext = null;
+    private final PlaybackFailurePolicy failurePolicy = new PlaybackFailurePolicy();
 
     /*//////////////////////////////////////////////////////////////////////////
     // UIs, listeners and disposables
@@ -402,6 +432,7 @@ public final class Player implements PlaybackListener, Listener {
                     }
                     final PlayQueueItem newItem = newQueue.getStreams().get(0);
                     playQueue.enqueueNext(newItem, false);
+                    userQueuedNext = newItem;
                     return;
                 }
 
@@ -621,6 +652,10 @@ public final class Player implements PlaybackListener, Listener {
 
         playQueue = queue;
         playQueue.init();
+        queueStartItem = playQueue.getItem();
+        adaptivePrePickAnchor = null;
+        adaptivePrePickPlaced = null;
+        userQueuedNext = null;
         reloadPlayQueueManager();
 
         UIs.call(PlayerUi::initPlayback);
@@ -709,6 +744,10 @@ public final class Player implements PlaybackListener, Listener {
         saveStreamProgressState();
         setRecovery();
         stopActivityBinding();
+
+        if (isAdaptiveShuffleEnabled()) {
+            runAdaptive(AdaptivePlayerIntegration::onPlaybackStopped);
+        }
 
         destroyPlayer();
         unregisterBroadcastReceiver();
@@ -1239,6 +1278,7 @@ public final class Player implements PlaybackListener, Listener {
         startPlaybackTimeTracking();
         // Record play/resume event
         recordPlayEvent();
+        failurePolicy.onPlaybackStarted();
 
         UIs.call(PlayerUi::onPlaying);
     }
@@ -1283,19 +1323,13 @@ public final class Player implements PlaybackListener, Listener {
             return;
         }
 
-        // Record completion and save playtime (track played to completion)
-        checkAndRecordCompletion();
-        saveAccumulatedPlayTime(true);
+        // The track played to its end
+        onListenLeft(currentStreamDuration, true, false);
 
         UIs.call(PlayerUi::onCompleted);
 
         if (playQueue.getIndex() < playQueue.size() - 1) {
-            if (isAdaptiveShuffleEnabled() && simpleExoPlayer != null
-                    && simpleExoPlayer.getShuffleModeEnabled()) {
-                advanceQueueWithAdaptiveSelection();
-            } else {
-                playQueue.offsetIndex(+1);
-            }
+            advanceToNext();
         }
         if (isProgressLoopRunning()) {
             stopProgressLoop();
@@ -1308,68 +1342,215 @@ public final class Player implements PlaybackListener, Listener {
                 context.getString(R.string.adaptive_shuffle_enabled_key), false);
     }
 
-    private void adaptiveResolveAndPrePick(final long endedStreamId, final long endedDuration) {
-        // Inter-track auto transition: ExoPlayer has already moved on. Resolve the
-        // just-ended track and pre-populate the slot AFTER the now-current track with
-        // the engine's pick, so the next auto-advance lands on the engine's choice.
-        databaseUpdateDisposable.add(
-            Single.fromCallable(() -> {
+    private boolean isAdaptiveShuffleActive() {
+        return isAdaptiveShuffleEnabled() && !exoPlayerIsNull()
+                && simpleExoPlayer.getShuffleModeEnabled();
+    }
+
+    /**
+     * Runs an update on the adaptive shuffle thread, in order with every other one. Not tied
+     * to {@link #databaseUpdateDisposable}, so it also completes while the player is torn down.
+     *
+     * @param action the update to run against the integration
+     */
+    private void runAdaptive(
+            @NonNull final java.util.function.Consumer<AdaptivePlayerIntegration> action) {
+        AdaptiveShuffleHolder.SCHEDULER.scheduleDirect(() -> {
+            try {
                 final AdaptivePlayerIntegration integration =
                         AdaptiveShuffleHolder.INSTANCE.get(context);
                 integration.ensureInitialised();
-                if (endedStreamId > 0 && endedDuration > 0) {
-                    integration.onTrackResolution(endedStreamId, endedDuration, endedDuration);
-                }
-                final Integer next = integration.pickNextIndex(playQueue);
-                return next == null ? -1 : next;
-            })
-            .subscribeOn(Schedulers.io())
-            .observeOn(AndroidSchedulers.mainThread())
-            .onErrorReturnItem(-1)
-            .subscribe(chosenIdx -> {
-                if (playQueue == null || chosenIdx == null) {
-                    return;
-                }
-                final int currentIdx = playQueue.getIndex();
-                if (chosenIdx > currentIdx + 1 && chosenIdx < playQueue.size()) {
-                    playQueue.move(chosenIdx, currentIdx + 1);
-                }
-            })
+                action.accept(integration);
+            } catch (final RuntimeException e) {
+                Log.e(TAG, "Adaptive shuffle update failed", e);
+            }
+        });
+    }
+
+    @NonNull
+    private Optional<PlayQueueItem> pickAdaptive(@NonNull final PlayQueue queue,
+                                                 final boolean repeatAll) {
+        final AdaptivePlayerIntegration integration = AdaptiveShuffleHolder.INSTANCE.get(context);
+        integration.ensureInitialised();
+        return Optional.ofNullable(integration.pickNext(queue, repeatAll));
+    }
+
+    /**
+     * Keeps the slot after the current item filled with an adaptive pick. Runs whenever the
+     * current item changes and when shuffle is turned on, so whatever moves playback along
+     * (a natural end, next, a tap in the queue, previous, an error skip) finds the engine's
+     * choice waiting. Picking only on a natural end, as before, left the playlist's own
+     * next track in that slot after every manual skip.
+     */
+    private void maybeAdaptivePrePick() {
+        if (playQueue == null || !isAdaptiveShuffleActive()) {
+            return;
+        }
+        final PlayQueueItem anchor = playQueue.getItem();
+        if (anchor == null || anchor == adaptivePrePickAnchor) {
+            return;
+        }
+        adaptivePrePickAnchor = anchor;
+        if (!playQueue.isComplete()) {
+            // Draw from all of a remote playlist, not only the pages loaded so far
+            playQueue.fetch();
+        }
+        final PlayQueue queue = playQueue;
+        final boolean repeatAll = getRepeatMode() == REPEAT_MODE_ALL;
+        databaseUpdateDisposable.add(
+            Single.fromCallable(() -> pickAdaptive(queue, repeatAll))
+                .subscribeOn(AdaptiveShuffleHolder.SCHEDULER)
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(
+                    chosen -> placeAdaptivePick(queue, anchor, chosen),
+                    error -> Log.e(TAG, "Adaptive shuffle pick failed", error))
         );
     }
 
-    private void advanceQueueWithAdaptiveSelection() {
-        final long streamId = currentStreamDatabaseId;
-        final long progress = exoPlayerIsNull() ? 0L : simpleExoPlayer.getCurrentPosition();
-        final long duration = currentStreamDuration;
+    /**
+     * Moves the pick to straight after the current item, unless the queue has moved on
+     * since it was requested or the user asked for a specific track to play next.
+     *
+     * @param queue  the queue the pick was made for
+     * @param anchor the item that was current when the pick was requested
+     * @param chosen the pick, if there was anything left to pick
+     */
+    private void placeAdaptivePick(@NonNull final PlayQueue queue,
+                                   @NonNull final PlayQueueItem anchor,
+                                   @NonNull final Optional<PlayQueueItem> chosen) {
+        if (queue != playQueue || queue.getItem() != anchor || !isAdaptiveShuffleActive()) {
+            return;
+        }
+        adaptivePrePickPlaced = anchor;
+        if (!chosen.isPresent()) {
+            return; // nothing left to pick
+        }
+        final int current = queue.getIndex();
+        final PlayQueueItem next = queue.getItem(current + 1);
+        if (next != null && next == userQueuedNext) {
+            return; // the user's "play next" goes first
+        }
+        final int chosenIndex = queue.indexOf(chosen.get());
+        final int target = ShuffleSession.placementTarget(chosenIndex, current);
+        if (target >= 0) {
+            queue.move(chosenIndex, target);
+        }
+    }
+
+    /**
+     * Moves on to the next item. Under adaptive shuffle the pick already placed after the
+     * current item is used; if it has not arrived yet, one is made now instead of falling
+     * back to the playlist's own next track.
+     */
+    private void advanceToNext() {
+        if (playQueue == null) {
+            return;
+        }
+        final PlayQueueItem current = playQueue.getItem();
+        if (!isAdaptiveShuffleActive() || current == null || adaptivePrePickPlaced == current) {
+            playQueue.offsetIndex(+1);
+            return;
+        }
+        final PlayQueue queue = playQueue;
+        final boolean repeatAll = getRepeatMode() == REPEAT_MODE_ALL;
+        adaptivePrePickAnchor = current;
         databaseUpdateDisposable.add(
-            Single.fromCallable(() -> {
-                final AdaptivePlayerIntegration integration =
-                        AdaptiveShuffleHolder.INSTANCE.get(context);
-                integration.ensureInitialised();
-                if (streamId > 0 && duration > 0) {
-                    integration.onTrackResolution(streamId, progress, duration);
-                }
-                final Integer next = integration.pickNextIndex(playQueue);
-                return next == null ? -1 : next;
-            })
-            .subscribeOn(Schedulers.io())
-            .observeOn(AndroidSchedulers.mainThread())
-            .onErrorReturnItem(-1)
-            .subscribe(chosenIdx -> {
-                if (playQueue == null) {
-                    return;
-                }
-                final int currentIdx = playQueue.getIndex();
-                if (chosenIdx != null && chosenIdx > currentIdx + 1
-                        && chosenIdx < playQueue.size()) {
-                    playQueue.move(chosenIdx, currentIdx + 1);
-                }
-                if (playQueue.getIndex() < playQueue.size() - 1) {
-                    playQueue.offsetIndex(+1);
-                }
-            })
+            Single.fromCallable(() -> pickAdaptive(queue, repeatAll))
+                .subscribeOn(AdaptiveShuffleHolder.SCHEDULER)
+                .observeOn(AndroidSchedulers.mainThread())
+                .onErrorReturnItem(Optional.<PlayQueueItem>empty())
+                .subscribe(chosen -> {
+                    placeAdaptivePick(queue, current, chosen);
+                    if (queue == playQueue && queue.getItem() == current) {
+                        queue.offsetIndex(+1);
+                    }
+                })
         );
+    }
+
+    private void markAdaptiveUnplayable(@Nullable final PlayQueueItem item) {
+        if (item != null) {
+            markAdaptiveUnplayable(item.getServiceId(), item.getUrl());
+        }
+    }
+
+    private void markAdaptiveUnplayable(final int serviceId, @NonNull final String url) {
+        if (isAdaptiveShuffleEnabled()) {
+            runAdaptive(integration -> integration.onUnplayable(serviceId, url));
+        }
+    }
+
+    /**
+     * Records what leaving the current track says about it: a completion, a skip or nothing
+     * (see {@link ListenJudge}), the time played, and under adaptive shuffle the outcome of
+     * the decision that chose it. Called once per listen, from wherever playback moved on.
+     *
+     * @param positionMillis the position reached in the track being left
+     * @param naturalEnd     the track played out and the player moved on by itself
+     * @param removed        the track was removed from the queue while playing
+     */
+    private void onListenLeft(final long positionMillis, final boolean naturalEnd,
+                              final boolean removed) {
+        if (currentListenClosed) {
+            return;
+        }
+        currentListenClosed = true;
+        // Once any track has been left, the queue is no longer at its start
+        queueStartItem = null;
+        final long streamId = currentStreamDatabaseId;
+        final long duration = currentStreamDuration;
+        if (streamId == -1 || duration <= 0) {
+            return;
+        }
+        final long position = naturalEnd ? duration : Math.max(0, positionMillis);
+        addPlayTime(streamId, position - playbackStartPositionMillis);
+
+        final boolean unjudged = currentListenUnjudged || removed;
+        switch (ListenJudge.judge(position, duration, naturalEnd, unjudged)) {
+            case COMPLETION:
+                databaseUpdateDisposable.add(recordManager.recordCompletion(streamId)
+                        .onErrorComplete().subscribe());
+                break;
+            case SKIP:
+                databaseUpdateDisposable.add(recordManager.recordSkip(streamId)
+                        .onErrorComplete().subscribe());
+                break;
+            default:
+                break;
+        }
+        if (isAdaptiveShuffleEnabled()) {
+            runAdaptive(integration ->
+                    integration.onTrackLeft(streamId, position, duration, !unjudged));
+        }
+    }
+
+    /**
+     * Unexpected and network errors used to reload the same item forever. For an item that
+     * cannot be had at all, such as a downloaded track whose file is gone while the phone is
+     * offline, that meant an endless loop of retries and error notifications. See
+     * {@link PlaybackFailurePolicy}.
+     */
+    private void handleTransientFailure() {
+        final PlayQueueItem failing = playQueue == null ? null : playQueue.getItem();
+        final String key = failing == null ? null
+                : failing.getServiceId() + "|" + failing.getUrl();
+        switch (failurePolicy.onFailure(key)) {
+            case SKIP:
+                if (playQueue != null) {
+                    playQueue.error();
+                }
+                break;
+            case STOP:
+                // Several items in a row failed, so most likely the connection did. Stay on
+                // this item, stopped; pressing play retries it.
+                setRecovery();
+                break;
+            case RETRY:
+            default:
+                setRecovery();
+                reloadPlayQueueManager();
+                break;
+        }
     }
     //endregion
 
@@ -1423,10 +1604,24 @@ public final class Player implements PlaybackListener, Listener {
 
         if (playQueue != null) {
             if (shuffleModeEnabled) {
-                // Adaptive shuffle handles ordering inside
-                // advanceQueueWithAdaptiveSelection at each track end; only the
-                // non-adaptive branch needs an up-front reorder.
-                if (!isAdaptiveShuffleEnabled()) {
+                // Shuffling straight after starting a queue ("Play all", then shuffle) means
+                // its first track was only a starting point: leaving it is not a verdict on
+                // it, however often it happens.
+                if (!exoPlayerIsNull() && ListenJudge.isShuffleStartGrace(
+                        queueStartItem != null && playQueue.getItem() == queueStartItem,
+                        simpleExoPlayer.getCurrentPosition())) {
+                    currentListenUnjudged = true;
+                    unjudgedItem = playQueue.getItem();
+                }
+                if (isAdaptiveShuffleEnabled()) {
+                    // Adaptive shuffle chooses one track at a time. Enter shuffle mode
+                    // without reordering, so turning it off restores the original order,
+                    // and place the first pick now so the very next track is shuffled.
+                    playQueue.markShuffled();
+                    adaptivePrePickAnchor = null;
+                    adaptivePrePickPlaced = null;
+                    maybeAdaptivePrePick();
+                } else {
                     final boolean useWeightedShuffle = prefs.getBoolean(
                             context.getString(R.string.use_weighted_shuffle_key), true);
                     if (useWeightedShuffle) {
@@ -1437,6 +1632,11 @@ public final class Player implements PlaybackListener, Listener {
                 }
             } else {
                 playQueue.unshuffle();
+                adaptivePrePickAnchor = null;
+                adaptivePrePickPlaced = null;
+                if (isAdaptiveShuffleEnabled()) {
+                    runAdaptive(AdaptivePlayerIntegration::onShuffleDisabled);
+                }
             }
         }
 
@@ -1531,19 +1731,35 @@ public final class Player implements PlaybackListener, Listener {
                 ErrorUtil.createNotification(context, errorInfo);
             }
 
+            if (!currentMetadata.getMaybeStreamInfo().isPresent()) {
+                // A failed or still-loading item. Nothing that can be judged is playing, and
+                // until tracking is reset every statistic would land on the previous track.
+                resetPlaybackTracking();
+                if (currentMetadata.getErrors().stream().anyMatch(e ->
+                        e instanceof FailedMediaSource.FailedMediaSourceException)) {
+                    // Removed, blocked or unresolvable: it will not play next time either
+                    markAdaptiveUnplayable(currentMetadata.getServiceId(),
+                            currentMetadata.getStreamUrl());
+                }
+                maybeAdaptivePrePick();
+            }
+
             currentMetadata.getMaybeStreamInfo().ifPresent(info -> {
                 if (DEBUG) {
                     Log.d(TAG, "ExoPlayer - onEvents() update stream info: " + info.getName());
                 }
                 if (previousInfo == null || !previousInfo.getUrl().equals(info.getUrl())) {
                     // only update with the new stream info if it has actually changed
-                    // Save playback time for previous stream before switching
-                    if (previousInfo != null) {
+                    // Save playback time for previous stream before switching, unless leaving
+                    // it was already recorded
+                    if (previousInfo != null && !currentListenClosed) {
                         saveAccumulatedPlayTime();
                     }
+                    resetPlaybackTracking();
                     updateMetadataWith(info);
                     // Initialize tracking for new stream
                     initializePlaybackTracking(info);
+                    maybeAdaptivePrePick();
                 } else if (previousAudioTrack == null
                         || tag.getMaybeAudioTrack()
                         .map(t -> t.getSelectedAudioStreamIndex()
@@ -1591,8 +1807,6 @@ public final class Player implements PlaybackListener, Listener {
 
         // Refresh the playback if there is a transition to the next video
         final int newIndex = newPosition.mediaItemIndex;
-        final boolean isAutoTransition = discontinuityReason == DISCONTINUITY_REASON_AUTO_TRANSITION
-                || discontinuityReason == DISCONTINUITY_REASON_REMOVE;
 
         switch (discontinuityReason) {
             case DISCONTINUITY_REASON_AUTO_TRANSITION:
@@ -1600,6 +1814,10 @@ public final class Player implements PlaybackListener, Listener {
                 // When player is in single repeat mode and a period transition occurs,
                 // we need to register a view count here since no metadata has changed
                 if (getRepeatMode() == REPEAT_MODE_ONE && newIndex == playQueue.getIndex()) {
+                    // The loop played to its end and the same listen starts over
+                    onListenLeft(currentStreamDuration, true, false);
+                    currentListenClosed = false;
+                    playbackStartPositionMillis = 0;
                     registerStreamViewed();
                     break;
                 }
@@ -1623,26 +1841,22 @@ public final class Player implements PlaybackListener, Listener {
                 }
             case DISCONTINUITY_REASON_SEEK_ADJUSTMENT:
             case DISCONTINUITY_REASON_INTERNAL:
+                if (oldPosition.mediaItemIndex != newPosition.mediaItemIndex
+                        || discontinuityReason == DISCONTINUITY_REASON_REMOVE) {
+                    // Whatever moved playback on (a natural end, next, a tap in the queue,
+                    // previous, an error skip), this is where the old track's listen closes,
+                    // at the position it actually reached. The player's current position
+                    // already belongs to the new track here, and next or a queue tap set the
+                    // queue index before this runs, which is why completions and skips used
+                    // to go mostly unrecorded.
+                    onListenLeft(oldPosition.positionMs,
+                            discontinuityReason == DISCONTINUITY_REASON_AUTO_TRANSITION,
+                            discontinuityReason == DISCONTINUITY_REASON_REMOVE);
+                }
                 // Player index may be invalid when playback is blocked
                 if (getCurrentState() != STATE_BLOCKED && newIndex != playQueue.getIndex()) {
-                    if (isAutoTransition) {
-                        // Track auto-transitioned (played to completion)
-                        checkAndRecordCompletion();
-                        saveAccumulatedPlayTime(true);
-                    } else {
-                        // Track if this was a skip (didn't reach completion)
-                        checkAndRecordSkip();
-                        saveAccumulatedPlayTime(false);
-                    }
                     saveStreamProgressStateCompleted(); // current stream has ended
-                    final long endedStreamId = currentStreamDatabaseId;
-                    final long endedDuration = currentStreamDuration;
                     playQueue.setIndex(newIndex);
-                    if (isAutoTransition && isAdaptiveShuffleEnabled()
-                            && !exoPlayerIsNull()
-                            && simpleExoPlayer.getShuffleModeEnabled()) {
-                        adaptiveResolveAndPrePick(endedStreamId, endedDuration);
-                    }
                 }
                 break;
             case DISCONTINUITY_REASON_SKIP:
@@ -1742,6 +1956,7 @@ public final class Player implements PlaybackListener, Listener {
             case ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED:
                 // Source errors, signal on playQueue and move on:
                 if (!exoPlayerIsNull() && playQueue != null) {
+                    markAdaptiveUnplayable(playQueue.getItem());
                     playQueue.error();
                 }
                 break;
@@ -1750,9 +1965,8 @@ public final class Player implements PlaybackListener, Listener {
             case ERROR_CODE_IO_NETWORK_CONNECTION_FAILED:
             case ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT:
             case ERROR_CODE_UNSPECIFIED:
-                // Reload playback on unexpected errors:
-                setRecovery();
-                reloadPlayQueueManager();
+                // Reload playback on unexpected errors, within limits:
+                handleTransientFailure();
                 break;
             default:
                 // API, remote and renderer errors belong here:
@@ -1997,13 +2211,7 @@ public final class Player implements PlaybackListener, Listener {
         }
 
         saveStreamProgressState();
-        if (isAdaptiveShuffleEnabled() && !exoPlayerIsNull()
-                && simpleExoPlayer.getShuffleModeEnabled()
-                && playQueue.getIndex() < playQueue.size() - 1) {
-            advanceQueueWithAdaptiveSelection();
-        } else {
-            playQueue.offsetIndex(+1);
-        }
+        advanceToNext();
         triggerProgressUpdate();
     }
 
@@ -2660,6 +2868,34 @@ public final class Player implements PlaybackListener, Listener {
     //////////////////////////////////////////////////////////////////////////*/
     //region Playback Statistics Tracking
 
+    /**
+     * Forgets the previous track's tracking state. Done synchronously when the current item
+     * changes: the new track's database ID arrives asynchronously, and until then anything
+     * recorded would otherwise be attributed to the previous track.
+     */
+    private void resetPlaybackTracking() {
+        currentStreamDatabaseId = -1;
+        currentStreamDuration = 0;
+        accumulatedPlayTimeMillis = 0;
+        playbackStartPositionMillis = 0;
+        currentListenClosed = false;
+        // Shuffle may be turned on while the first track is still loading; keep the grace
+        // for that item when its metadata arrives, and drop it for any other.
+        if (playQueue == null || playQueue.getItem() != unjudgedItem) {
+            currentListenUnjudged = false;
+            unjudgedItem = null;
+        }
+    }
+
+    private void addPlayTime(final long streamId, final long playedMillis) {
+        if (streamId == -1 || playedMillis <= 0) {
+            return;
+        }
+        accumulatedPlayTimeMillis += playedMillis;
+        databaseUpdateDisposable.add(recordManager.addPlayTime(streamId, playedMillis)
+                .onErrorComplete().subscribe());
+    }
+
     private void initializePlaybackTracking(@Nullable final StreamInfo info) {
         if (info == null) {
             return;
@@ -2672,6 +2908,10 @@ public final class Player implements PlaybackListener, Listener {
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(
                     streamId -> {
+                        if (currentMetadata == null
+                                || !info.getUrl().equals(currentMetadata.getStreamUrl())) {
+                            return; // playback moved on before the ID arrived
+                        }
                         currentStreamDatabaseId = streamId;
                         currentStreamDuration = info.getDuration() * 1000; // convert to millis
                         accumulatedPlayTimeMillis = 0;
@@ -2733,6 +2973,8 @@ public final class Player implements PlaybackListener, Listener {
         } else {
             final long currentPosition = simpleExoPlayer.getCurrentPosition();
             playedMillis = currentPosition - playbackStartPositionMillis;
+            // Counted up to here; leaving while paused must not count it again
+            playbackStartPositionMillis = currentPosition;
         }
 
         if (playedMillis > 0) {
@@ -2765,42 +3007,6 @@ public final class Player implements PlaybackListener, Listener {
             if (DEBUG) {
                 Log.d(TAG, "Skipping playtime save - playedMillis: " + playedMillis);
             }
-        }
-    }
-
-    private void checkAndRecordCompletion() {
-        if (currentStreamDatabaseId == -1 || currentStreamDuration == 0 || exoPlayerIsNull()) {
-            return;
-        }
-
-        final long currentPosition = simpleExoPlayer.getCurrentPosition();
-        final double completionPercentage = (double) currentPosition / currentStreamDuration;
-
-        // Consider >90% as completion
-        if (completionPercentage > 0.9) {
-            databaseUpdateDisposable.add(
-                recordManager.recordCompletion(currentStreamDatabaseId)
-                    .onErrorComplete()
-                    .subscribe()
-            );
-        }
-    }
-
-    private void checkAndRecordSkip() {
-        if (currentStreamDatabaseId == -1 || currentStreamDuration == 0 || exoPlayerIsNull()) {
-            return;
-        }
-
-        final long currentPosition = simpleExoPlayer.getCurrentPosition();
-        final double completionPercentage = (double) currentPosition / currentStreamDuration;
-
-        // If we haven't reached 90%, it's a skip
-        if (completionPercentage <= 0.9) {
-            databaseUpdateDisposable.add(
-                recordManager.recordSkip(currentStreamDatabaseId)
-                    .onErrorComplete()
-                    .subscribe()
-            );
         }
     }
 

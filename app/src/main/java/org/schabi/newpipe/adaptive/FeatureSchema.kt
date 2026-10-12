@@ -18,13 +18,16 @@ object FeatureSchema {
     //   - uploader_avg_rating is replaced by within-uploader deviations, which ask whether
     //     a track is better or worse than its own uploader's baseline.
     //   - is_rated is added so an unrated track is no longer read as a three-star one.
+    // Schema v4 renames completion_ratio to completion_rate and divides by finished
+    // listens (completions plus skips) instead of play_count, which also counts every
+    // resume and rebuffer. The rename changes the hash, so the model rebuilds.
     val names: List<String> = listOf(
         "hour_sin", "hour_cos", "dow_sin", "dow_cos",
         "session_position", "recent_skip_rate",
         "prev_was_autoqueued", "prev_was_completed",
         "queue_origin_single", "queue_origin_playlist", "queue_origin_channel",
         "log_duration", "is_rated", "user_rating_norm", "log_play_count",
-        "completion_ratio", "days_since_played",
+        "completion_rate", "days_since_played",
         "is_audio_only", "is_live",
         "same_uploader_as_prev",
         "completion_vs_uploader", "rating_vs_uploader",
@@ -47,7 +50,7 @@ object FeatureSchema {
     const val IS_RATED = 12
     const val USER_RATING = 13
     const val LOG_PLAY_COUNT = 14
-    const val COMPLETION_RATIO = 15
+    const val COMPLETION_RATE = 15
     const val DAYS_SINCE_PLAYED = 16
     const val IS_AUDIO_ONLY = 17
     const val IS_LIVE = 18
@@ -95,7 +98,7 @@ object FeatureSchema {
         "is_rated" to "Track has a star rating at all",
         "user_rating_norm" to "Your five-star rating, centred to zero",
         "log_play_count" to "Lifetime plays of this track (log scale)",
-        "completion_ratio" to "Lifetime completion rate for this track",
+        "completion_rate" to "Share of this track's finished listens that reached the end",
         "days_since_played" to "Time since last play (log scale)",
         "is_audio_only" to "Audio-only stream",
         "is_live" to "Live stream",

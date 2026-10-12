@@ -143,4 +143,27 @@ class AdaptiveShuffleEngineTest {
         assertTrue("thompson should spread picks, got $ts", ts.size > 1)
         assertFalse(store.events.isEmpty())
     }
+
+    @Test fun `an abandoned listen leaves no event and does not train the model`() {
+        val store = InMemoryStore()
+        val e = engine(store)
+        val item = fixtureItem(9L)
+        e.chooseNext(listOf(item), fixtureContext())
+        e.captureSnapshot(item.streamId, 0)
+        e.abandon(item.streamId)
+        assertTrue(store.events.isEmpty())
+        assertEquals(0L, e.numEvents())
+        // The snapshot is gone too, so a later play of the track cannot resolve it.
+        assertNull(e.resolveOutcome(item.streamId, 100_000L, 100_000L, 0))
+    }
+
+    @Test fun `abandon ignores tracks the engine did not choose`() {
+        val store = InMemoryStore()
+        val e = engine(store)
+        val chosen = fixtureItem(1L)
+        e.chooseNext(listOf(chosen), fixtureContext())
+        e.captureSnapshot(chosen.streamId, 0)
+        e.abandon(2L)
+        assertEquals(1, store.events.size)
+    }
 }

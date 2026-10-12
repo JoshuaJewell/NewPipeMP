@@ -44,9 +44,11 @@ object FeatureExtractor {
         v[FeatureSchema.USER_RATING] = if (rating != null) (rating - 3.0) / 2.0 else 0.0
         v[FeatureSchema.LOG_PLAY_COUNT] = ln(1.0 + item.lifetimePlayCount.coerceAtLeast(0))
 
-        val warm = item.lifetimePlayCount >= AdaptiveShuffleConfig.COLD_START_MIN_PLAYS
-        v[FeatureSchema.COMPLETION_RATIO] = if (warm) {
-            item.lifetimeCompletions.toDouble() / item.lifetimePlayCount
+        // Over finished listens only. lifetimeEarlySkips holds every skip short of the
+        // completion threshold, so the two together are all listens that ended.
+        val resolved = item.lifetimeCompletions + item.lifetimeEarlySkips
+        v[FeatureSchema.COMPLETION_RATE] = if (resolved >= AdaptiveShuffleConfig.COLD_START_MIN_PLAYS) {
+            item.lifetimeCompletions.toDouble() / resolved
         } else {
             AdaptiveShuffleConfig.COLD_START_COMPLETION_RATIO
         }

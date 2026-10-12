@@ -22,8 +22,14 @@ class AdaptivePlayerIntegration(
     private val repository: AdaptiveShuffleRepository,
     private val telemetry: TelemetryLog? = null,
     private val selectionMode: () -> SelectionMode = { SelectionMode.UCB },
-    private val rng: Random = Random()
+    private val rng: Random = Random(),
+    private val clock: () -> Long = System::currentTimeMillis
 ) {
+    // Every method here runs on AdaptiveShuffleHolder.SCHEDULER, a single thread, so
+    // resolutions and picks happen in the order the player asked for them.
+    private val session = ShuffleSession()
+    private var lastActivityAt = 0L
+
     private val resolutionDecisionTimestamps = java.util.concurrent.ConcurrentHashMap<Long, Long>()
     private val recentScores = ArrayDeque<LinUCB.Score>()
     private var lastGreedy: Boolean = true
@@ -78,64 +84,116 @@ class AdaptivePlayerIntegration(
         )
     }
 
-    // Picks the index, in playQueue.streams, that should play next. Returns null when no
-    // change is required (no remaining items, or nothing could be scored).
+    // Picks the queue item that should play after the current one, or null when there is
+    // nothing left to pick. The caller moves it into place (ShuffleSession.placementTarget)
+    // and looks it up by identity, since the queue may change while this runs.
     @JvmOverloads
-    fun pickNextIndex(
+    fun pickNext(
         playQueue: PlayQueue,
+        repeatAll: Boolean = false,
         samplingCap: Int = AdaptiveShuffleConfig.CANDIDATE_SAMPLE_CAP
-    ): Int? {
+    ): PlayQueueItem? {
+        val all = ArrayList(playQueue.streams)
         val current = playQueue.index
-        val all = playQueue.streams
         if (current < 0 || current >= all.size) return null
 
+        val now = clock()
         val currentItem = all[current]
         val currentStreamId = repository.getStreamForUrl(currentItem.serviceId, currentItem.url)?.uid
+        // Before any reset, which forgets the last decision without discarding it.
         discardUnplayedDecision(currentStreamId)
+        if (session.begin(playQueue)) {
+            resetSession()
+        } else if (lastActivityAt > 0L && now - lastActivityAt > AdaptiveShuffleConfig.SESSION_GAP_MILLIS) {
+            // Same queue, but picked up again after a long pause: a new listening session
+            // for the context features.
+            resetSession()
+        }
+        lastActivityAt = now
         noteNowPlaying(currentItem)
 
-        if (current + 1 >= all.size) return null
-        val tail = all.subList(current + 1, all.size)
-        val entries = tail.mapIndexed { i, item ->
-            CandidateFilter.TailEntry(i, CandidateFilter.key(item.serviceId, item.url), item.uploader)
-        }
+        val keys = all.map { CandidateFilter.key(it.serviceId, it.url) }
+        session.notePlayed(keys[current])
+        val pool = session.candidateIndices(keys, current, repeatAll)
+        if (pool.isEmpty()) return null
+        val entries = pool.map { i -> CandidateFilter.TailEntry(i, keys[i], all[i].uploader) }
         val filtered = CandidateFilter.filter(entries, recentKeys.toList(), recentUploaders.toList())
         val sampled = CandidateFilter.sample(filtered.eligible, samplingCap, rng)
         if (sampled.isEmpty()) return null
+        val sampledItems = sampled.map { all[it.tailIndex] }
 
-        val sampledItems = sampled.map { it.tailIndex to tail[it.tailIndex] }
-        val candidates = materialiser.materialise(sampledItems.map { it.second }, previousStreamId)
-        if (candidates.isEmpty()) return null
+        val pairs = materialiser.materialisePairs(sampledItems, previousStreamId)
+        if (pairs.isEmpty()) {
+            // Nothing could be scored (no database rows could be made). Still shuffle:
+            // falling through would play the playlist's own next track.
+            return sampledItems[rng.nextInt(sampledItems.size)]
+        }
         val context = buildContext(originOf(playQueue))
-        val decision = engine.chooseNext(candidates, context, selectionMode())
+        val decision = engine.chooseNext(pairs.map { it.second }, context, selectionMode())
         rememberScore(decision.score, decision.greedy)
         val chosenStreamId = decision.chosen.streamId
+        val chosenItem = pairs.first { it.second === decision.chosen }.first
 
-        // Materialisation can drop items, so locate the chosen one among the sampled
-        // subset to recover its play-queue index.
-        for ((tailIdx, item) in sampledItems) {
-            val stream = repository.getStreamForUrl(item.serviceId, item.url)
-            if (stream != null && stream.uid == chosenStreamId) {
-                val absoluteIdx = current + 1 + tailIdx
-                engine.captureSnapshot(chosenStreamId, repository.getRestartCount(chosenStreamId))
-                previousUploader = item.uploader
-                previousStreamId = chosenStreamId
-                previousAutoQueued = item.isAutoQueued
-                lastDecision = chosenStreamId to decision.pendingEventId
-                val now = System.currentTimeMillis()
-                resolutionDecisionTimestamps[chosenStreamId] = now
-                telemetry?.logDecision(
-                    chosenStreamId = chosenStreamId,
-                    candidateCount = candidates.size,
-                    predictedReward = decision.score.predictedReward,
-                    uncertainty = decision.score.uncertainty,
-                    greedy = decision.greedy,
-                    nowMillis = now
-                )
-                return absoluteIdx
-            }
+        engine.captureSnapshot(chosenStreamId, repository.getRestartCount(chosenStreamId))
+        previousUploader = chosenItem.uploader
+        previousStreamId = chosenStreamId
+        previousAutoQueued = chosenItem.isAutoQueued
+        lastDecision = chosenStreamId to decision.pendingEventId
+        resolutionDecisionTimestamps[chosenStreamId] = now
+        telemetry?.logDecision(
+            chosenStreamId = chosenStreamId,
+            candidateCount = pairs.size,
+            predictedReward = decision.score.predictedReward,
+            uncertainty = decision.score.uncertainty,
+            greedy = decision.greedy,
+            nowMillis = now
+        )
+        return chosenItem
+    }
+
+    // The player left a track. judged is false when the listen says nothing about the
+    // track (see ListenJudge); its decision, if the engine made one, is then dropped.
+    fun onTrackLeft(streamId: Long, progressMillis: Long, durationMillis: Long, judged: Boolean) {
+        lastActivityAt = clock()
+        if (judged) {
+            onTrackResolution(streamId, progressMillis, durationMillis)
+        } else {
+            engine.abandon(streamId)
+            resolutionDecisionTimestamps.remove(streamId)
         }
-        return null
+    }
+
+    // The item could not be loaded. It is excluded from picks for the rest of the process
+    // and any decision that chose it is dropped, so it is neither retried every session
+    // nor counted as a listen.
+    fun onUnplayable(serviceId: Int, url: String) {
+        session.markUnplayable(CandidateFilter.key(serviceId, url))
+        val streamId = repository.getStreamForUrl(serviceId, url)?.uid ?: return
+        engine.abandon(streamId)
+        resolutionDecisionTimestamps.remove(streamId)
+        val decided = lastDecision
+        if (decided != null && decided.first == streamId) {
+            engine.discardDecision(decided.second, streamId)
+            lastDecision = null
+        }
+    }
+
+    // Shuffle was turned off: the pick waiting to play next will not be played as one.
+    fun onShuffleDisabled() {
+        lastDecision?.let { (streamId, eventId) ->
+            engine.discardDecision(eventId, streamId)
+            resolutionDecisionTimestamps.remove(streamId)
+        }
+        lastDecision = null
+    }
+
+    // The player was closed. The track in flight and the pre-pick behind it will never
+    // resolve, so drop them rather than leave them awaiting forever.
+    fun onPlaybackStopped() {
+        lastDecision?.let { (streamId, eventId) -> engine.discardDecision(eventId, streamId) }
+        lastDecision = null
+        engine.abandonAll()
+        resolutionDecisionTimestamps.clear()
     }
 
     // If the previous decision's track is not the one now playing, the user moved past

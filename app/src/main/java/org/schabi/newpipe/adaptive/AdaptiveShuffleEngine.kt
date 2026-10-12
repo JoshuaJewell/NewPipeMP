@@ -129,6 +129,21 @@ class AdaptiveShuffleEngine(
         snapshots.remove(streamId)
     }
 
+    // A track that played but whose listen says nothing (left during the shuffle start
+    // grace, removed from the queue, playback closed): forget its decision instead of
+    // resolving it. Does nothing unless the engine chose the track.
+    fun abandon(streamId: Long) {
+        if (snapshots.remove(streamId) == null) return
+        synchronized(lock) {
+            val eventId = store.findLatestUnresolvedForStream(streamId) ?: return
+            store.deletePending(eventId)
+        }
+    }
+
+    fun abandonAll() {
+        for (streamId in snapshots.keys.toList()) abandon(streamId)
+    }
+
     data class Resolution(val reward: Double, val completionRatio: Double, val restartDelta: Int)
 
     fun resolveOutcome(

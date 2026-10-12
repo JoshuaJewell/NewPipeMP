@@ -512,6 +512,17 @@ public abstract class PlayQueue implements Serializable {
     }
 
     /**
+     * Enters shuffle mode without reordering anything, for shuffles that choose one track at
+     * a time (adaptive shuffle). The backup lets {@link #unshuffle()} restore the original
+     * order afterwards, and makes {@link #isShuffled()} report the mode correctly.
+     */
+    public synchronized void markShuffled() {
+        if (backup == null) {
+            backup = new ArrayList<>(streams);
+        }
+    }
+
+    /**
      * Unshuffles the current play queue if a backup play queue exists.
      * <p>
      * This method undoes shuffling and index will be set to the previously playing item if found,

@@ -56,7 +56,13 @@ internal object ReplayHarness {
         // evidence discount was added outside the plan.
         Stage(
             "shipped defaults (UCB, gamma ${AdaptiveShuffleConfig.DISCOUNT_GAMMA})",
-            true, true, true, true, true, false, AdaptiveShuffleConfig.DISCOUNT_GAMMA
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            AdaptiveShuffleConfig.DISCOUNT_GAMMA
         )
     )
 
@@ -202,7 +208,13 @@ internal object ReplayHarness {
         sb.append(
             String.format(
                 "%-36s %8s %8s %7s %8s %8s  %s\n",
-                "stage", "rho(rew)", "rho(cr)", "uniq100", "topUpl", "topTrk", "top-5 session recurrence"
+                "stage",
+                "rho(rew)",
+                "rho(cr)",
+                "uniq100",
+                "topUpl",
+                "topTrk",
+                "top-5 session recurrence"
             )
         )
         for (r in reports) {
@@ -211,8 +223,13 @@ internal object ReplayHarness {
             sb.append(
                 String.format(
                     "%-36s %8.3f %8.3f %7d %8.3f %8.3f  %s\n",
-                    r.stage.label, r.spearmanReward, r.spearmanCompletion, m.uniqueTracks,
-                    m.topUploaderShare, m.topTrackShare, recurrence
+                    r.stage.label,
+                    r.spearmanReward,
+                    r.spearmanCompletion,
+                    m.uniqueTracks,
+                    m.topUploaderShare,
+                    m.topTrackShare,
+                    recurrence
                 )
             )
         }
@@ -260,8 +277,7 @@ internal object ReplayHarness {
         return Loaded(events, withoutOutcome, undecodable)
     }
 
-    private fun hexToBytes(hex: String): ByteArray =
-        ByteArray(hex.length / 2) { i -> hex.substring(2 * i, 2 * i + 2).toInt(16).toByte() }
+    private fun hexToBytes(hex: String): ByteArray = ByteArray(hex.length / 2) { i -> hex.substring(2 * i, 2 * i + 2).toInt(16).toByte() }
 
     private const val DAY_MILLIS = 86_400_000.0
 

@@ -6,6 +6,9 @@ package org.schabi.newpipe.adaptive
 
 import android.content.Context
 import androidx.preference.PreferenceManager
+import io.reactivex.rxjava3.core.Scheduler
+import io.reactivex.rxjava3.schedulers.Schedulers
+import java.util.concurrent.Executors
 import org.schabi.newpipe.NewPipeDatabase
 import org.schabi.newpipe.R
 
@@ -13,6 +16,14 @@ import org.schabi.newpipe.R
 // existing pattern (see NewPipeDatabase) of double-checked Kotlin singletons.
 object AdaptiveShuffleHolder {
     @Volatile private var integration: AdaptivePlayerIntegration? = null
+
+    // All adaptive work runs here, one task at a time and in submission order, so a
+    // track's resolution always lands before the pick that follows it. Spreading it over
+    // Schedulers.io, as before, let the two race.
+    @JvmField
+    val SCHEDULER: Scheduler = Schedulers.from(
+        Executors.newSingleThreadExecutor { r -> Thread(r, "adaptive-shuffle").apply { isDaemon = true } }
+    )
 
     fun get(context: Context): AdaptivePlayerIntegration {
         val existing = integration

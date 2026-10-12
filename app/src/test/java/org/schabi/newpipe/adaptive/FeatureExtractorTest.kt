@@ -163,16 +163,23 @@ class FeatureExtractorTest {
             item(plays = 1, earlySkips = 0, completions = 1),
             passthroughScaler
         )
-        assertEquals(AdaptiveShuffleConfig.COLD_START_COMPLETION_RATIO, v[FeatureSchema.COMPLETION_RATIO], 0.0)
+        assertEquals(AdaptiveShuffleConfig.COLD_START_COMPLETION_RATIO, v[FeatureSchema.COMPLETION_RATE], 0.0)
     }
 
-    @Test fun `lifetime completion ratio used when plays at or above threshold`() {
+    @Test fun `lifetime completion rate is over finished listens`() {
         val v = FeatureExtractor.buildVector(
             ctx(),
             item(plays = 10, earlySkips = 2, completions = 7),
             passthroughScaler
         )
-        assertEquals(0.7, v[FeatureSchema.COMPLETION_RATIO], 1e-12)
+        assertEquals(7.0 / 9.0, v[FeatureSchema.COMPLETION_RATE], 1e-12)
+    }
+
+    @Test fun `resumes and rebuffers do not dilute the completion rate`() {
+        // play_count rises on every resume; the rate must not move with it.
+        val few = FeatureExtractor.buildVector(ctx(), item(plays = 4, earlySkips = 1, completions = 3), passthroughScaler)
+        val many = FeatureExtractor.buildVector(ctx(), item(plays = 40, earlySkips = 1, completions = 3), passthroughScaler)
+        assertEquals(few[FeatureSchema.COMPLETION_RATE], many[FeatureSchema.COMPLETION_RATE], 0.0)
     }
 
     @Test fun `two tracks by one uploader get different uploader-derived values`() {

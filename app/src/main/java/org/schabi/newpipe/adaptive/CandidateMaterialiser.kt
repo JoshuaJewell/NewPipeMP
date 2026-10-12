@@ -17,12 +17,21 @@ class CandidateMaterialiser(private val repository: AdaptiveShuffleRepository) {
     fun materialise(
         items: List<PlayQueueItem>,
         previousStreamId: Long? = null
-    ): List<CandidateItem> {
+    ): List<CandidateItem> = materialisePairs(items, previousStreamId).map { it.second }
+
+    // Each candidate alongside the queue item it came from. Items never seen before (most
+    // of a remote playlist) get a streams row created from the queue item, so they can be
+    // scored as cold candidates. Skipping them, as before, meant a remote playlist fell
+    // back to playlist order and never-played tracks could not be chosen at all.
+    fun materialisePairs(
+        items: List<PlayQueueItem>,
+        previousStreamId: Long? = null
+    ): List<Pair<PlayQueueItem, CandidateItem>> {
         val now = OffsetDateTime.now()
         val uploaderCache = HashMap<String, AdaptiveShuffleRepository.UploaderStats>()
-        val out = ArrayList<CandidateItem>(items.size)
+        val out = ArrayList<Pair<PlayQueueItem, CandidateItem>>(items.size)
         for (item in items) {
-            val stream = repository.getStreamForUrl(item.serviceId, item.url) ?: continue
+            val stream = repository.getOrCreateStream(item) ?: continue
             val streamId = stream.uid
             val stats = repository.getPlaybackStatistics(streamId)
             val lastHistory = repository.getLatestHistoryEntry(streamId)
@@ -47,7 +56,7 @@ class CandidateMaterialiser(private val repository: AdaptiveShuffleRepository) {
 
             val offline = repository.isDownloadedOffline(streamId)
 
-            out += CandidateItem(
+            out += item to CandidateItem(
                 streamId = streamId,
                 durationSeconds = stream.duration,
                 userRating = stream.userRating,

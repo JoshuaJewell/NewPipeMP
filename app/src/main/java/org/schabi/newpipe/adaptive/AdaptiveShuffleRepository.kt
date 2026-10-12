@@ -45,6 +45,17 @@ class AdaptiveShuffleRepository(database: AppDatabase) : AdaptiveShuffleStore {
 
     fun getStreamForUrl(serviceId: Int, url: String): org.schabi.newpipe.database.stream.model.StreamEntity? = streamDao.getStream(serviceId.toLong(), url).blockingFirst(emptyList()).firstOrNull()
 
+    fun getOrCreateStream(item: org.schabi.newpipe.player.playqueue.PlayQueueItem): org.schabi.newpipe.database.stream.model.StreamEntity? {
+        getStreamForUrl(item.serviceId, item.url)?.let { return it }
+        return try {
+            val entity = org.schabi.newpipe.database.stream.model.StreamEntity(item)
+            entity.uid = streamDao.upsert(entity)
+            entity
+        } catch (t: RuntimeException) {
+            null
+        }
+    }
+
     override fun getStreamTitle(streamId: Long): String? = streamDao.getTitleByIdBlocking(streamId)
 
     fun recentlyPlayed(limit: Int) = featureQueriesDao.recentlyPlayedBlocking(limit)

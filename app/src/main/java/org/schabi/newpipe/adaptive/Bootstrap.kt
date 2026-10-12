@@ -19,7 +19,7 @@ import org.schabi.newpipe.extractor.stream.StreamType
 //     outvoted real evidence several times over.
 //   - The synthetic reward is computed from the track's own completion and skip counts,
 //     so those counts are withheld from the features (the item is presented as cold).
-//     Otherwise the prior simply learns that completion_ratio predicts itself.
+//     Otherwise the prior simply learns that completion_rate predicts itself.
 object Bootstrap {
 
     fun runIfNeeded(database: AppDatabase, engine: AdaptiveShuffleEngine, repository: AdaptiveShuffleRepository): Int {
