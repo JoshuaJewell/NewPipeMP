@@ -29,6 +29,7 @@
     <string name="adaptive_shuffle_enabled_key">adaptive_shuffle_enabled_key</string>
     <string name="adaptive_shuffle_debug_view_enabled_key">adaptive_shuffle_debug_view_enabled_key</string>
     <string name="adaptive_shuffle_debug_screen_key">adaptive_shuffle_debug_screen_key</string>
+    <string name="adaptive_shuffle_thompson_key">adaptive_shuffle_thompson_key</string>
     <string name="rating_statistics_key">rating_statistics_key</string>
 
     <string-array name="weighted_shuffle_unrated_weight_description">

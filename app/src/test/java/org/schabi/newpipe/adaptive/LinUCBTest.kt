@@ -61,4 +61,45 @@ class LinUCBTest {
         b.update(x, -1.0)
         assertNotEquals(a.theta()[0], b.theta()[0])
     }
+
+    @Test fun `a weight of two equals two identical updates`() {
+        val x = doubleArrayOf(1.0, 0.5, -0.25)
+        val weighted = LinUCB(dimension = 3)
+        weighted.update(x, 0.8, weight = 2.0)
+        val repeated = LinUCB(dimension = 3)
+        repeated.update(x, 0.8)
+        repeated.update(x, 0.8)
+        val tw = weighted.theta()
+        val tr = repeated.theta()
+        for (i in 0 until 3) assertEquals(tr[i], tw[i], 1e-12)
+    }
+
+    @Test fun `discount lets the model follow a change in taste`() {
+        val x = doubleArrayOf(1.0, 1.0)
+        val forgetful = LinUCB(dimension = 2, discount = 0.95)
+        val stubborn = LinUCB(dimension = 2, discount = 1.0)
+        repeat(300) { forgetful.update(x, 1.0); stubborn.update(x, 1.0) }
+        repeat(60) { forgetful.update(x, -1.0); stubborn.update(x, -1.0) }
+        val pf = forgetful.score(x).predictedReward
+        val ps = stubborn.score(x).predictedReward
+        assertTrue("discounted model should have moved to the new taste ($pf)", pf < -0.5)
+        assertTrue("undiscounted model should still lean on old evidence ($ps)", ps > 0.5)
+    }
+
+    @Test fun `discount keeps uncertainty from collapsing to zero`() {
+        val x = doubleArrayOf(1.0, 0.0)
+        val model = LinUCB(dimension = 2, discount = 0.99)
+        repeat(5000) { model.update(x, 0.0) }
+        assertTrue(model.score(x).uncertainty > 0.05)
+    }
+
+    @Test fun `posterior draws centre on theta`() {
+        val model = LinUCB(dimension = 2)
+        repeat(50) { model.update(doubleArrayOf(1.0, 0.0), 1.0) }
+        val rng = java.util.Random(11)
+        var mean = 0.0
+        repeat(2000) { mean += model.sampleTheta(rng)[0] }
+        mean /= 2000
+        assertEquals(model.theta()[0], mean, 0.02)
+    }
 }

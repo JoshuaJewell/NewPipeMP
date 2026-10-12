@@ -130,7 +130,6 @@
     <string name="adaptive_shuffle_exploit">Exploit</string>
     <string name="adaptive_shuffle_explore">Explore</string>
     <string name="adaptive_shuffle_rebuild">Rebuild from history</string>
-    <string name="adaptive_shuffle_rebuilt">Rebuilt from %1$d events</string>
     <string name="adaptive_shuffle_no_events">No decisions recorded yet</string>
     <string name="adaptive_shuffle_events_label">Events ingested: %1$d</string>
     <string name="adaptive_shuffle_theta_label">Learnt weights (largest first)</string>
@@ -139,6 +138,17 @@
     <string name="adaptive_shuffle_recent_caption">Newest first. EXPLOIT = picked for expected appeal; EXPLORE = picked to learn. R is the actual reward once the track resolved.</string>
     <string name="adaptive_shuffle_unknown_title">Unknown track</string>
     <string name="adaptive_shuffle_reward_pending">Awaiting</string>
+    <string name="adaptive_shuffle_thompson_title">Sample instead of bound (experimental)</string>
+    <string name="adaptive_shuffle_thompson_summary">Adaptive shuffle draws a plausible model each pick (Thompson sampling) instead of always taking the highest optimistic score. More variety where the model is unsure; no effect on tracks it is confidently wrong about</string>
+    <string name="adaptive_shuffle_rebuild_report">Rebuilt from %1$d events: %2$d rescored from stored outcomes, %3$d recovered from telemetry, %4$d kept their original reward, %5$d skipped</string>
+    <string name="adaptive_shuffle_metrics_label">What you have been hearing</string>
+    <string name="adaptive_shuffle_metrics_caption">Over the last %1$d tracks that played. These measure repetition directly; the weights below do not.</string>
+    <string name="adaptive_shuffle_metrics_empty">No resolved decisions yet</string>
+    <string name="adaptive_shuffle_metrics_unique">Distinct tracks: %1$d of %2$d</string>
+    <string name="adaptive_shuffle_metrics_top_uploader">Most-served uploader: %1$s (%2$d%%)</string>
+    <string name="adaptive_shuffle_metrics_top_track">Most-served track: %1$s (%2$d%%)</string>
+    <string name="adaptive_shuffle_metrics_sessions">Recurring across the last %1$d sessions:</string>
+    <string name="adaptive_shuffle_metrics_session_row">%1$s: in %2$d%% of sessions</string>
     <string name="rating_statistics_title">Rating Statistics</string>
     <string name="rating_statistics_summary">View listening and rating statistics</string>
     <string name="stats_section_overall">Overall</string>

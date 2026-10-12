@@ -15,12 +15,37 @@ import java.nio.charset.StandardCharsets
 // Version history:
 //   1: original schema (22 features).
 //   2: adds uploader aggregates, playlist co-membership and offline flag (27 features).
+//   3: appends a trailer holding decision metadata (whether the pick was the greedy
+//      choice) and, once the track resolves, the outcome (completion ratio and restart
+//      delta). The outcome lets any future reward function be replayed exactly, which
+//      v2 could not do because only the scalar reward was stored.
 object RawInputsCodec {
-    private const val VERSION: Byte = 2
+    private const val VERSION: Byte = 3
+    private const val VERSION_2: Byte = 2
 
-    data class Decoded(val context: DecisionContext, val item: CandidateItem)
+    data class Outcome(val completionRatio: Double, val restartDelta: Int)
 
-    fun encode(context: DecisionContext, item: CandidateItem): ByteArray {
+    data class Decoded(
+        val context: DecisionContext,
+        val item: CandidateItem,
+        // null when unknown (v2 blobs, or decisions made before the flag existed).
+        val greedy: Boolean? = null,
+        val outcome: Outcome? = null
+    )
+
+    // Re-encodes an existing blob (v2 or v3) with an outcome attached. A v2 blob is
+    // upgraded to v3 on the way through.
+    fun withOutcome(bytes: ByteArray, outcome: Outcome): ByteArray {
+        val d = decode(bytes)
+        return encode(d.context, d.item, d.greedy, outcome)
+    }
+
+    fun encode(
+        context: DecisionContext,
+        item: CandidateItem,
+        greedy: Boolean? = null,
+        outcome: Outcome? = null
+    ): ByteArray {
         val prevUploader = context.previousUploader?.toByteArray(StandardCharsets.UTF_8)
         val uploader = item.uploader?.toByteArray(StandardCharsets.UTF_8)
         val capacity =
@@ -49,7 +74,9 @@ object RawInputsCodec {
                 Byte.SIZE_BYTES + Double.SIZE_BYTES + // uploader_completion_rate present + value
                 Byte.SIZE_BYTES + Double.SIZE_BYTES + // uploader_skip_rate present + value
                 Int.SIZE_BYTES + // playlist_co_membership_with_prev
-                Byte.SIZE_BYTES // is_downloaded_offline
+                Byte.SIZE_BYTES + // is_downloaded_offline
+                Byte.SIZE_BYTES + // v3: greedy flag (0 no, 1 yes, 2 unknown)
+                Byte.SIZE_BYTES + Double.SIZE_BYTES + Int.SIZE_BYTES // v3: outcome present, ratio, restart delta
         val buf = ByteBuffer.allocate(capacity).order(ByteOrder.LITTLE_ENDIAN)
         buf.put(VERSION)
         buf.put(context.hourOfDay.toByte())
@@ -107,13 +134,29 @@ object RawInputsCodec {
         writeOptionalDouble(buf, item.uploaderSkipRate)
         buf.putInt(item.playlistCoMembershipWithPrev)
         buf.put(if (item.isDownloadedOffline) 1.toByte() else 0.toByte())
+        buf.put(
+            when (greedy) {
+                false -> 0.toByte()
+                true -> 1.toByte()
+                null -> 2.toByte()
+            }
+        )
+        if (outcome != null) {
+            buf.put(1.toByte())
+            buf.putDouble(outcome.completionRatio)
+            buf.putInt(outcome.restartDelta)
+        } else {
+            buf.put(0.toByte())
+            buf.putDouble(0.0)
+            buf.putInt(0)
+        }
         return buf.array()
     }
 
     fun decode(bytes: ByteArray): Decoded {
         val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         val v = buf.get()
-        require(v == VERSION) { "unknown raw inputs version $v" }
+        require(v == VERSION || v == VERSION_2) { "unknown raw inputs version $v" }
         val hour = buf.get().toInt()
         val dow = buf.get().toInt()
         val session = buf.getInt()
@@ -161,6 +204,19 @@ object RawInputsCodec {
         val uploaderSkipRate = readOptionalDouble(buf)
         val coMembership = buf.getInt()
         val isOffline = buf.get() != 0.toByte()
+        var greedy: Boolean? = null
+        var outcome: Outcome? = null
+        if (v == VERSION) {
+            greedy = when (buf.get().toInt()) {
+                0 -> false
+                1 -> true
+                else -> null
+            }
+            val outcomePresent = buf.get() != 0.toByte()
+            val ratio = buf.getDouble()
+            val restart = buf.getInt()
+            if (outcomePresent) outcome = Outcome(ratio, restart)
+        }
         return Decoded(
             context = DecisionContext(
                 hourOfDay = hour,
@@ -188,7 +244,9 @@ object RawInputsCodec {
                 uploaderSkipRate = uploaderSkipRate,
                 playlistCoMembershipWithPrev = coMembership,
                 isDownloadedOffline = isOffline
-            )
+            ),
+            greedy = greedy,
+            outcome = outcome
         )
     }
 

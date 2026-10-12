@@ -26,6 +26,7 @@ import org.schabi.newpipe.adaptive.AdaptivePlayerIntegration
 import org.schabi.newpipe.adaptive.AdaptiveShuffleEngine
 import org.schabi.newpipe.adaptive.AdaptiveShuffleHolder
 import org.schabi.newpipe.adaptive.FeatureSchema
+import org.schabi.newpipe.adaptive.RepetitionMetrics
 
 class AdaptiveShuffleDebugFragment : Fragment() {
 
@@ -55,14 +56,23 @@ class AdaptiveShuffleDebugFragment : Fragment() {
                     refresh(view, integration)
                     view.findViewById<Button>(R.id.rebuildButton).setOnClickListener {
                         disposables.add(
-                            Single.fromCallable { integration.engine.rebuildFromPending() }
+                            Single.fromCallable {
+                                integration.engine.rebuildFromPending(integration.telemetryIndex())
+                            }
                                 .subscribeOn(Schedulers.io())
                                 .observeOn(AndroidSchedulers.mainThread())
-                                .subscribe({ count ->
+                                .subscribe({ report ->
                                     Toast.makeText(
                                         requireContext(),
-                                        getString(R.string.adaptive_shuffle_rebuilt, count),
-                                        Toast.LENGTH_SHORT
+                                        getString(
+                                            R.string.adaptive_shuffle_rebuild_report,
+                                            report.ingested,
+                                            report.fromStoredOutcome,
+                                            report.fromTelemetry,
+                                            report.carriedOver,
+                                            report.skipped
+                                        ),
+                                        Toast.LENGTH_LONG
                                     ).show()
                                     refresh(view, integration)
                                 }, { _ -> })
@@ -85,6 +95,21 @@ class AdaptiveShuffleDebugFragment : Fragment() {
 
         renderTheta(view, engine.theta())
 
+        disposables.add(
+            Single.fromCallable {
+                val report = engine.repetitionMetrics()
+                val titles = HashMap<Long, String>()
+                val ids = report.recurringTracks.map { it.streamId } + listOfNotNull(report.topTrackId)
+                for (id in ids) engine.streamTitle(id)?.let { titles[id] = it }
+                report to titles
+            }
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe({ (report, titles) ->
+                    renderMetrics(view, report, titles)
+                }, { _ -> })
+        )
+
         // Recent decisions involve DB reads for title resolution; do off main thread.
         disposables.add(
             Single.fromCallable { engine.recentDecisions(20) }
@@ -94,6 +119,45 @@ class AdaptiveShuffleDebugFragment : Fragment() {
                     renderDecisions(view, decisions)
                 }, { _ -> })
         )
+    }
+
+    private fun renderMetrics(view: View, report: RepetitionMetrics.Report, titles: Map<Long, String>) {
+        val caption = view.findViewById<TextView>(R.id.metricsCaption)
+        val body = view.findViewById<TextView>(R.id.metricsBody)
+        if (report.windowSize == 0) {
+            caption.text = getString(R.string.adaptive_shuffle_metrics_empty)
+            body.text = ""
+            return
+        }
+        caption.text = getString(R.string.adaptive_shuffle_metrics_caption, report.windowSize)
+        val lines = ArrayList<String>()
+        lines += getString(R.string.adaptive_shuffle_metrics_unique, report.uniqueTracks, report.windowSize)
+        report.topUploader?.let {
+            lines += getString(
+                R.string.adaptive_shuffle_metrics_top_uploader,
+                it,
+                (report.topUploaderShare * 100).toInt()
+            )
+        }
+        report.topTrackId?.let {
+            lines += getString(
+                R.string.adaptive_shuffle_metrics_top_track,
+                titles[it] ?: "#$it",
+                (report.topTrackShare * 100).toInt()
+            )
+        }
+        if (report.sessionsConsidered > 1 && report.recurringTracks.isNotEmpty()) {
+            lines += ""
+            lines += getString(R.string.adaptive_shuffle_metrics_sessions, report.sessionsConsidered)
+            for (r in report.recurringTracks) {
+                lines += getString(
+                    R.string.adaptive_shuffle_metrics_session_row,
+                    titles[r.streamId] ?: "#${r.streamId}",
+                    (r.sessionShare * 100).toInt()
+                )
+            }
+        }
+        body.text = lines.joinToString("\n")
     }
 
     private fun renderTheta(view: View, theta: DoubleArray) {

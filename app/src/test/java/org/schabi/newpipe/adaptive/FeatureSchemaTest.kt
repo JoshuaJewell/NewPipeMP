@@ -30,4 +30,52 @@ class FeatureSchemaTest {
             assertTrue("$i in bounds", i in 0 until FeatureSchema.DIMENSION)
         }
     }
+
+    @Test fun `no feature is a linear combination of the others over varied inputs`() {
+        // The v2 schema had three exact dependencies (origin one-hots + bias, uploader
+        // completion + skip rates, and near-complementary track ratios) that made weights
+        // unidentifiable. A full-rank Gram matrix rules all of them out.
+        val rng = java.util.Random(5)
+        val d = FeatureSchema.DIMENSION
+        val gram = DoubleArray(d * d)
+        repeat(4000) {
+            val plays = rng.nextInt(20)
+            val completions = if (plays == 0) 0 else rng.nextInt(plays + 1)
+            val ctx = DecisionContext(
+                hourOfDay = rng.nextInt(24),
+                dayOfWeek = rng.nextInt(7),
+                sessionPosition = rng.nextInt(40),
+                recentSkipRate = rng.nextDouble(),
+                previousAutoQueued = rng.nextBoolean(),
+                previousCompleted = rng.nextBoolean(),
+                previousUploader = if (rng.nextBoolean()) "A" else "B",
+                previousStreamId = null,
+                queueOrigin = QueueOrigin.values()[rng.nextInt(4)]
+            )
+            val item = CandidateItem(
+                streamId = 1L,
+                durationSeconds = 60L + rng.nextInt(600),
+                userRating = if (rng.nextBoolean()) rng.nextInt(6) else null,
+                lifetimePlayCount = plays,
+                lifetimeEarlySkips = plays - completions,
+                lifetimeCompletions = completions,
+                daysSinceLastAccess = if (rng.nextBoolean()) rng.nextDouble() * 60 else null,
+                streamType = StreamTypeFeature.values()[rng.nextInt(4)],
+                uploader = if (rng.nextBoolean()) "A" else "C",
+                uploaderAvgRating = if (rng.nextBoolean()) rng.nextDouble() * 5 else null,
+                uploaderCompletionRate = if (rng.nextBoolean()) rng.nextDouble() else null,
+                uploaderSkipRate = null,
+                playlistCoMembershipWithPrev = rng.nextInt(4),
+                isDownloadedOffline = rng.nextBoolean()
+            )
+            val x = FeatureExtractor.buildRawVector(ctx, item)
+            for (i in 0 until d) for (j in 0 until d) gram[i * d + j] += x[i] * x[j]
+        }
+        // Cholesky fails on a singular matrix; normalise by the diagonal first so the
+        // pivot threshold is scale-free.
+        val norm = DoubleArray(d) { kotlin.math.sqrt(gram[it * d + it]) }
+        val corr = DoubleArray(d * d) { k -> gram[k] / (norm[k / d] * norm[k % d]) }
+        val l = Matrix.of(d, d, corr).choleskyLower()
+        for (i in 0 until d) assertTrue("pivot $i (${FeatureSchema.names[i]}) ${l[i, i]}", l[i, i] > 1e-3)
+    }
 }

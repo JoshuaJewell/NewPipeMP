@@ -86,7 +86,6 @@ import org.schabi.newpipe.MainActivity;
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.adaptive.AdaptivePlayerIntegration;
 import org.schabi.newpipe.adaptive.AdaptiveShuffleHolder;
-import org.schabi.newpipe.adaptive.QueueOrigin;
 import org.schabi.newpipe.databinding.PlayerBinding;
 import org.schabi.newpipe.error.ErrorInfo;
 import org.schabi.newpipe.error.ErrorUtil;
@@ -1321,7 +1320,7 @@ public final class Player implements PlaybackListener, Listener {
                 if (endedStreamId > 0 && endedDuration > 0) {
                     integration.onTrackResolution(endedStreamId, endedDuration, endedDuration);
                 }
-                final Integer next = integration.pickNextIndex(playQueue, QueueOrigin.OTHER, 30);
+                final Integer next = integration.pickNextIndex(playQueue);
                 return next == null ? -1 : next;
             })
             .subscribeOn(Schedulers.io())
@@ -1343,7 +1342,6 @@ public final class Player implements PlaybackListener, Listener {
         final long streamId = currentStreamDatabaseId;
         final long progress = exoPlayerIsNull() ? 0L : simpleExoPlayer.getCurrentPosition();
         final long duration = currentStreamDuration;
-        final QueueOrigin origin = QueueOrigin.OTHER;
         databaseUpdateDisposable.add(
             Single.fromCallable(() -> {
                 final AdaptivePlayerIntegration integration =
@@ -1352,7 +1350,7 @@ public final class Player implements PlaybackListener, Listener {
                 if (streamId > 0 && duration > 0) {
                     integration.onTrackResolution(streamId, progress, duration);
                 }
-                final Integer next = integration.pickNextIndex(playQueue, origin, 30);
+                final Integer next = integration.pickNextIndex(playQueue);
                 return next == null ? -1 : next;
             })
             .subscribeOn(Schedulers.io())

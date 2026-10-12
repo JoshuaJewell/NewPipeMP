@@ -25,6 +25,7 @@ class TelemetryLog private constructor(context: Context) {
         candidateCount: Int,
         predictedReward: Double,
         uncertainty: Double,
+        greedy: Boolean,
         nowMillis: Long
     ) {
         val line = buildString {
@@ -35,7 +36,7 @@ class TelemetryLog private constructor(context: Context) {
             append("\"candidate_count\":").append(candidateCount).append(',')
             append("\"predicted_reward\":").append(predictedReward).append(',')
             append("\"uncertainty\":").append(uncertainty).append(',')
-            append("\"exploit\":").append(predictedReward > uncertainty)
+            append("\"exploit\":").append(greedy)
             append('}')
         }
         appendLine(line)
@@ -45,6 +46,7 @@ class TelemetryLog private constructor(context: Context) {
         streamId: Long,
         completionRatio: Double,
         reward: Double,
+        restartDelta: Int,
         timeSinceDecisionMs: Long,
         nowMillis: Long
     ) {
@@ -55,10 +57,29 @@ class TelemetryLog private constructor(context: Context) {
             append("\"stream_id\":").append(streamId).append(',')
             append("\"completion_ratio\":").append(completionRatio).append(',')
             append("\"reward\":").append(reward).append(',')
+            append("\"restart_delta\":").append(restartDelta).append(',')
             append("\"time_since_decision_ms\":").append(timeSinceDecisionMs)
             append('}')
         }
         appendLine(line)
+    }
+
+    // Every line currently on disk, oldest file first. Used to recover completion ratios
+    // for decisions made before raw inputs stored them.
+    fun readLines(): List<String> {
+        writeLock.lock()
+        try {
+            val out = ArrayList<String>()
+            for (f in listOf(rotated, file)) {
+                if (f.exists()) out += f.readLines(StandardCharsets.UTF_8)
+            }
+            return out
+        } catch (e: IOException) {
+            Log.w(TAG, "telemetry read failed: " + e.message)
+            return emptyList()
+        } finally {
+            writeLock.unlock()
+        }
     }
 
     private fun appendLine(line: String) {

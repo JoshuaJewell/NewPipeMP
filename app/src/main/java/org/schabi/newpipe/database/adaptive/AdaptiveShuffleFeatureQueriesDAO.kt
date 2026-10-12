@@ -48,5 +48,24 @@ abstract class AdaptiveShuffleFeatureQueriesDAO {
     )
     abstract fun isDownloadedOfflineBlocking(streamId: Long): Boolean
 
+    // Most recently played distinct streams, newest first. Seeds the recency window and
+    // uploader spacing so they hold across app restarts and new queues.
+    @Query(
+        """
+        SELECT s.service_id AS serviceId, s.url AS url, s.uploader AS uploader
+        FROM streams s
+        INNER JOIN (
+            SELECT stream_id, MAX(access_date) AS last_access
+            FROM stream_history
+            GROUP BY stream_id
+        ) h ON h.stream_id = s.uid
+        ORDER BY h.last_access DESC
+        LIMIT :limit
+        """
+    )
+    abstract fun recentlyPlayedBlocking(limit: Int): List<RecentlyPlayed>
+
     data class UploaderAggregate(val completions: Int, val skips: Int)
+
+    data class RecentlyPlayed(val serviceId: Int, val url: String, val uploader: String?)
 }

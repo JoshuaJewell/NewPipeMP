@@ -7,31 +7,66 @@ package org.schabi.newpipe.adaptive
 import java.security.MessageDigest
 
 object FeatureSchema {
+    // Schema v3. Each change removes a linear dependency that left individual weights
+    // unidentifiable (ADAPTIVE_SHUFFLE_SPEC.md, section 5):
+    //   - queue_origin_other is dropped. The four origin one-hots always summed to one,
+    //     so with the bias they were collinear; OTHER is now the baseline the bias holds.
+    //   - The track skip_ratio is dropped. Skips and completions make up nearly every
+    //     play, so the two ratios were close to complementary.
+    //   - uploader_completion_rate and uploader_skip_rate are dropped. They summed to
+    //     exactly one, and as absolute terms they lifted a whole catalogue at once.
+    //   - uploader_avg_rating is replaced by within-uploader deviations, which ask whether
+    //     a track is better or worse than its own uploader's baseline.
+    //   - is_rated is added so an unrated track is no longer read as a three-star one.
     val names: List<String> = listOf(
         "hour_sin", "hour_cos", "dow_sin", "dow_cos",
         "session_position", "recent_skip_rate",
         "prev_was_autoqueued", "prev_was_completed",
-        "queue_origin_single", "queue_origin_playlist",
-        "queue_origin_channel", "queue_origin_other",
-        "log_duration", "user_rating_norm", "log_play_count",
-        "skip_ratio", "completion_ratio", "days_since_played",
+        "queue_origin_single", "queue_origin_playlist", "queue_origin_channel",
+        "log_duration", "is_rated", "user_rating_norm", "log_play_count",
+        "completion_ratio", "days_since_played",
         "is_audio_only", "is_live",
         "same_uploader_as_prev",
-        "uploader_avg_rating", "uploader_completion_rate", "uploader_skip_rate",
+        "completion_vs_uploader", "rating_vs_uploader",
         "playlist_co_membership_prev", "is_downloaded_offline",
         "bias"
     )
 
-    const val DIMENSION: Int = 27
+    const val HOUR_SIN = 0
+    const val HOUR_COS = 1
+    const val DOW_SIN = 2
+    const val DOW_COS = 3
+    const val SESSION_POSITION = 4
+    const val RECENT_SKIP_RATE = 5
+    const val PREV_AUTOQUEUED = 6
+    const val PREV_COMPLETED = 7
+    const val ORIGIN_SINGLE = 8
+    const val ORIGIN_PLAYLIST = 9
+    const val ORIGIN_CHANNEL = 10
+    const val LOG_DURATION = 11
+    const val IS_RATED = 12
+    const val USER_RATING = 13
+    const val LOG_PLAY_COUNT = 14
+    const val COMPLETION_RATIO = 15
+    const val DAYS_SINCE_PLAYED = 16
+    const val IS_AUDIO_ONLY = 17
+    const val IS_LIVE = 18
+    const val SAME_UPLOADER = 19
+    const val COMPLETION_VS_UPLOADER = 20
+    const val RATING_VS_UPLOADER = 21
+    const val PLAYLIST_CO_MEMBERSHIP = 22
+    const val IS_OFFLINE = 23
+    const val BIAS = 24
 
-    // Indices into the feature vector whose values vary on a continuous unbounded
-    // scale and benefit from running standardisation. Bounded or one-hot features
-    // are passed through untouched.
+    const val DIMENSION: Int = 25
+
+    // Indices whose values vary on a continuous unbounded scale and benefit from running
+    // standardisation. Bounded or one-hot features pass through untouched.
     val scaledIndices: IntArray = intArrayOf(
-        4, // session_position (log-transformed)
-        12, // log_duration
-        14, // log_play_count
-        17 // days_since_played (log-transformed)
+        SESSION_POSITION,
+        LOG_DURATION,
+        LOG_PLAY_COUNT,
+        DAYS_SINCE_PLAYED
     )
 
     // Stable SHA-256 over the feature name list. Any reorder, rename or addition
@@ -53,22 +88,20 @@ object FeatureSchema {
         "recent_skip_rate" to "Early-skip rate over the last ten plays",
         "prev_was_autoqueued" to "Previous track was added by autoplay",
         "prev_was_completed" to "Previous track played to at least 85%",
-        "queue_origin_single" to "Queue was a single track",
-        "queue_origin_playlist" to "Queue came from a playlist",
-        "queue_origin_channel" to "Queue came from a channel tab",
-        "queue_origin_other" to "Queue came from search or related",
+        "queue_origin_single" to "Queue was a single track (vs search or related)",
+        "queue_origin_playlist" to "Queue came from a playlist (vs search or related)",
+        "queue_origin_channel" to "Queue came from a channel tab (vs search or related)",
         "log_duration" to "Track length (log scale)",
+        "is_rated" to "Track has a star rating at all",
         "user_rating_norm" to "Your five-star rating, centred to zero",
         "log_play_count" to "Lifetime plays of this track (log scale)",
-        "skip_ratio" to "Lifetime early-skip rate for this track",
         "completion_ratio" to "Lifetime completion rate for this track",
         "days_since_played" to "Time since last play (log scale)",
         "is_audio_only" to "Audio-only stream",
         "is_live" to "Live stream",
         "same_uploader_as_prev" to "Same uploader as the previous track",
-        "uploader_avg_rating" to "Average rating across this uploader's rated tracks",
-        "uploader_completion_rate" to "Lifetime completion rate across all tracks by this uploader",
-        "uploader_skip_rate" to "Lifetime early-skip rate across all tracks by this uploader",
+        "completion_vs_uploader" to "Completion rate relative to this uploader's usual",
+        "rating_vs_uploader" to "Rating relative to this uploader's average",
         "playlist_co_membership_prev" to "Playlists containing both this and the previous track (log scale)",
         "is_downloaded_offline" to "Track is available offline",
         "bias" to "Constant baseline (model's average reward)"
@@ -87,6 +120,7 @@ data class DecisionContext(
     val queueOrigin: QueueOrigin
 )
 
+// Ordinals are persisted by RawInputsCodec; append new values, never reorder.
 enum class QueueOrigin { SINGLE, PLAYLIST, CHANNEL, OTHER }
 
 data class CandidateItem(
@@ -101,6 +135,7 @@ data class CandidateItem(
     val uploader: String?,
     val uploaderAvgRating: Double? = null,
     val uploaderCompletionRate: Double? = null,
+    // Persisted for history but no longer a feature: it is 1 - uploaderCompletionRate.
     val uploaderSkipRate: Double? = null,
     val playlistCoMembershipWithPrev: Int = 0,
     val isDownloadedOffline: Boolean = false

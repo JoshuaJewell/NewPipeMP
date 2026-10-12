@@ -27,6 +27,32 @@ abstract class AdaptiveShufflePendingEventDAO {
     )
     abstract fun resolve(id: Long, reward: Double, resolvedAt: Long): Int
 
+    @Query(
+        """
+        UPDATE adaptive_shuffle_pending_events SET
+            resolved = 1,
+            reward = :reward,
+            raw_inputs_blob = :rawInputsBlob,
+            resolved_at = :resolvedAt
+        WHERE id = :id
+        """
+    )
+    abstract fun resolveWithInputs(id: Long, reward: Double, rawInputsBlob: ByteArray, resolvedAt: Long): Int
+
+    @Query("UPDATE adaptive_shuffle_pending_events SET raw_inputs_blob = :rawInputsBlob WHERE id = :id")
+    abstract fun updateRawInputs(id: Long, rawInputsBlob: ByteArray): Int
+
+    @Query("SELECT * FROM adaptive_shuffle_pending_events WHERE id = :id")
+    abstract fun getByIdBlocking(id: Long): AdaptiveShufflePendingEventEntity?
+
+    @Query("DELETE FROM adaptive_shuffle_pending_events WHERE id = :id")
+    abstract fun deleteById(id: Long): Int
+
+    @Query(
+        "SELECT * FROM adaptive_shuffle_pending_events WHERE resolved = 1 ORDER BY chosen_at DESC LIMIT :limit"
+    )
+    abstract fun getRecentResolvedBlocking(limit: Int): List<AdaptiveShufflePendingEventEntity>
+
     @Query("SELECT * FROM adaptive_shuffle_pending_events ORDER BY chosen_at DESC LIMIT :limit")
     abstract fun getRecent(limit: Int): Flowable<List<AdaptiveShufflePendingEventEntity>>
 

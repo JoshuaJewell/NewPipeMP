@@ -81,4 +81,39 @@ class RawInputsCodecTest {
         val v = doubleArrayOf(1.5, -2.0, 0.0, 3.14, Double.MIN_VALUE)
         assertArrayEquals(v, RawInputsCodec.decodeFeatureVector(RawInputsCodec.encodeFeatureVector(v)), 0.0)
     }
+
+    @Test fun `greedy flag and outcome round trip`() {
+        val ctx = fixtureContext()
+        val item = fixtureItem(3)
+        val bytes = RawInputsCodec.encode(ctx, item, greedy = false)
+        val withOutcome = RawInputsCodec.withOutcome(bytes, RawInputsCodec.Outcome(0.37, 2))
+        val decoded = RawInputsCodec.decode(withOutcome)
+        assertEquals(false, decoded.greedy)
+        assertEquals(0.37, decoded.outcome!!.completionRatio, 0.0)
+        assertEquals(2, decoded.outcome!!.restartDelta)
+        assertEquals(item, decoded.item)
+    }
+
+    @Test fun `v2 blobs still decode and upgrade when an outcome is attached`() {
+        val ctx = fixtureContext()
+        val item = fixtureItem(3)
+        val v2 = downgradeToV2(RawInputsCodec.encode(ctx, item))
+        val decoded = RawInputsCodec.decode(v2)
+        assertEquals(item, decoded.item)
+        assertEquals(null, decoded.greedy)
+        assertEquals(null, decoded.outcome)
+        val upgraded = RawInputsCodec.decode(RawInputsCodec.withOutcome(v2, RawInputsCodec.Outcome(0.9, 0)))
+        assertEquals(0.9, upgraded.outcome!!.completionRatio, 0.0)
+    }
+
+    companion object {
+        private const val V3_TRAILER_BYTES = 1 + 1 + 8 + 4
+
+        // Builds the blob a v2 build would have written for the same inputs.
+        fun downgradeToV2(v3: ByteArray): ByteArray {
+            val out = v3.copyOf(v3.size - V3_TRAILER_BYTES)
+            out[0] = 2
+            return out
+        }
+    }
 }

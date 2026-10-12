@@ -5,7 +5,9 @@
 package org.schabi.newpipe.adaptive
 
 import android.content.Context
+import androidx.preference.PreferenceManager
 import org.schabi.newpipe.NewPipeDatabase
+import org.schabi.newpipe.R
 
 // Process-wide singleton holder. The codebase has no DI framework, so this matches the
 // existing pattern (see NewPipeDatabase) of double-checked Kotlin singletons.
@@ -21,16 +23,24 @@ object AdaptiveShuffleHolder {
             val db = NewPipeDatabase.getInstance(context.applicationContext)
             val repository = AdaptiveShuffleRepository(db)
             val engine = AdaptiveShuffleEngine(repository)
+            val materialiser = CandidateMaterialiser(repository)
+            val telemetry = TelemetryLog.get(context.applicationContext)
+            val appContext = context.applicationContext
+            val thompsonKey = appContext.getString(R.string.adaptive_shuffle_thompson_key)
+            val selectionMode = {
+                val prefs = PreferenceManager.getDefaultSharedPreferences(appContext)
+                if (prefs.getBoolean(thompsonKey, false)) SelectionMode.THOMPSON else SelectionMode.UCB
+            }
+            val created = AdaptivePlayerIntegration(engine, materialiser, repository, telemetry, selectionMode)
             val init = engine.initialise()
             if (init is AdaptiveShuffleEngine.InitialiseResult.SchemaMismatch) {
-                engine.rebuildFromPending()
+                // Schema changed: replay history under the new features and reward, using
+                // the telemetry log to recover outcomes older events did not store.
+                engine.rebuildFromPending(created.telemetryIndex())
             } else if (init is AdaptiveShuffleEngine.InitialiseResult.Fresh) {
                 // No persisted model and no resolved events yet; prime from aggregate stats.
                 Bootstrap.runIfNeeded(db, engine, repository)
             }
-            val materialiser = CandidateMaterialiser(repository)
-            val telemetry = TelemetryLog.get(context.applicationContext)
-            val created = AdaptivePlayerIntegration(engine, materialiser, repository, telemetry)
             integration = created
             return created
         }

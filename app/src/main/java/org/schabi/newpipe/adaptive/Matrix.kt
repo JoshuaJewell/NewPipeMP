@@ -14,11 +14,11 @@ class Matrix private constructor(
 ) {
     operator fun get(i: Int, j: Int): Double = data[i * cols + j]
 
-    fun inverseSymmetricPositiveDefinite(): Matrix {
-        require(rows == cols) { "inverse requires a square matrix" }
+    // Cholesky factor L of a symmetric positive-definite matrix, with A = L L^T.
+    // Returned as a full n x n matrix whose entries above the diagonal are zero.
+    fun choleskyLower(): Matrix {
+        require(rows == cols) { "Cholesky requires a square matrix" }
         val n = rows
-        // Cholesky factorisation: A = L L^T, with L lower-triangular.
-        // Stored row-major in a fresh array; entries above the diagonal stay zero.
         val l = DoubleArray(n * n)
         for (j in 0 until n) {
             var diag = data[j * n + j]
@@ -37,6 +37,13 @@ class Matrix private constructor(
                 l[i * n + j] = s / ljj
             }
         }
+        return Matrix(n, n, l)
+    }
+
+    fun inverseSymmetricPositiveDefinite(): Matrix {
+        require(rows == cols) { "inverse requires a square matrix" }
+        val n = rows
+        val l = choleskyLower().data
         // Solve A x_col = e_col column-by-column via L (forward) then L^T (back).
         val inv = DoubleArray(n * n)
         val y = DoubleArray(n)
@@ -88,18 +95,29 @@ class Matrix private constructor(
         return buf.array()
     }
 
-    fun addOuterProduct(x: DoubleArray) {
+    fun addOuterProduct(x: DoubleArray, weight: Double = 1.0) {
         require(x.size == rows && rows == cols) {
             "addOuterProduct requires a square matrix matching x.size"
         }
         for (i in 0 until rows) {
-            val xi = x[i]
+            val xi = weight * x[i]
             val rowOffset = i * cols
             for (j in 0 until cols) {
                 data[rowOffset + j] += xi * x[j]
             }
         }
     }
+
+    // A <- gamma * (A - lambda I) + lambda I. Shrinks accumulated evidence while keeping
+    // the ridge prior intact, so A stays positive definite for any gamma in (0, 1].
+    fun discountTowardsScaledIdentity(gamma: Double, lambda: Double) {
+        require(rows == cols) { "discount requires a square matrix" }
+        for (i in data.indices) data[i] *= gamma
+        val restore = lambda * (1.0 - gamma)
+        for (i in 0 until rows) data[i * cols + i] += restore
+    }
+
+    fun copy(): Matrix = Matrix(rows, cols, data.copyOf())
 
     companion object {
         private const val SERIAL_HEADER_BYTES = 2 * Int.SIZE_BYTES
