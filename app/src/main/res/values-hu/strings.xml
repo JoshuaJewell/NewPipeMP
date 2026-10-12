@@ -29,7 +29,7 @@
     <string name="network_error">Hálózati hiba</string>
     <string name="background_player_playing_toast">Lejátszás a háttérben</string>
     <string name="settings_category_video_audio_title">Videó és hang</string>
-    <string name="settings_category_appearance_title">Megjelenés</string>
+    <string name="settings_category_appearance_title">Kinézet</string>
     <string name="content_language_title">Tartalom alapértelmezett nyelve</string>
     <string name="show_next_and_similar_title">„Következő” és „Hasonló” videók megjelenítése</string>
     <string name="dark_theme_title">Sötét</string>
@@ -107,7 +107,7 @@
     <string name="settings_category_player_title">Lejátszó</string>
     <string name="settings_category_player_behavior_title">Működés</string>
     <string name="settings_category_history_title">Előzmények és gyorsítótár</string>
-    <string name="settings_category_debug_title">Hibaelhárítás</string>
+    <string name="settings_category_debug_title">Hibakeresés</string>
     <string name="popup_playing_toast">Lejátszás felugró módban</string>
     <string name="all">Összes</string>
     <string name="disabled">Letiltva</string>
@@ -197,21 +197,20 @@
     <string name="title_activity_about">A NewPipe névjegye</string>
     <string name="tab_about">Névjegy és GYIK</string>
     <string name="tab_licenses">Licencek</string>
-    <string name="app_description">Szabad, egyszerű közvetítésnézés Androidon.</string>
+    <string name="app_description">Szabad és könnyed közvetítés Androidon.</string>
     <string name="contribution_title">Közreműködés</string>
-    <string name="contribution_encouragement">Akár fordítással, tervezési változtatásokkal, kódtisztítással, vagy valódi nehéz kódváltoztatással kapcsolatos ötletei vannak, bármilyen segítséget szívesen fogadunk. Minél több minden készül el, annál jobb lesz!</string>
+    <string name="contribution_encouragement">Legyen szó fordításról, dizájnmódosításokról, kódtisztításról vagy komolyabb fejlesztésekről, minden segítséget szívesen fogadunk. Minél többen járulnak hozzá, annál jobb lesz a projekt!</string>
     <string name="view_on_github">Megtekintés a GitHubon</string>
-    <string name="donation_title">Adományozás</string>
-    <string name="donation_encouragement">A NewPipe alkalmazást önkéntesek fejlesztik a szabadidejükben, hogy a lehető legjobb felhasználói élményt nyújtsák. Járuljon hozzá, hogy a fejlesztők még jobbá tegyék alkalmazást, miközben egy csésze kávét szürcsölnek.</string>
-    <string name="give_back">Hozzájárulás</string>
+    <string name="donation_title">Adakozás</string>
+    <string name="donation_encouragement">A NewPipe-ot önkéntesek fejlesztik a szabadidejükben, hogy a lehető legjobb felhasználói élményt nyújtsák. Támogatásával hozzájárulhat ahhoz, hogy a fejlesztők egy csésze kávé mellett még jobbá tehessék a NewPipe-ot.</string>
+    <string name="give_back">Támogatás</string>
     <string name="website_title">Weboldal</string>
-    <string name="website_encouragement">Látogasson el a NewPipe weboldalára további információkért és hírekért.</string>
+    <string name="website_encouragement">Látogassa meg a NewPipe weboldalát további információkért és hírekért.</string>
     <string name="privacy_policy_title">A NewPipe adatvédelmi irányelvei</string>
-    <string name="privacy_policy_encouragement">A NewPipe projekt komolyan veszi az adatvédelmét. Az alkalmazás nem gyűjt semmilyen adatot a beleegyezése nélkül.
-\nA NewPipe adatvédelmi irányelve részletesen elmagyarázza, mely adatok kerülnek elküldésre és tárolásra az alkalmazás összeomlásának jelentésekor.</string>
-    <string name="read_privacy_policy">Adatvédelmi irányelvek elolvasása</string>
+    <string name="privacy_policy_encouragement">A NewPipe projekt kiemelten fontosnak tartja az Ön adatainak védelmét. Ezért az alkalmazás az Ön hozzájárulása nélkül semmilyen adatot nem gyűjt.\nA NewPipe adatvédelmi irányelvei részletesen ismertetik, hogy összeomlási jelentés küldésekor milyen adatok kerülnek továbbításra és tárolásra.</string>
+    <string name="read_privacy_policy">Adatvédelmi irányelvek megtekintése</string>
     <string name="app_license_title">A NewPipe licence</string>
-    <string name="read_full_license">Licenc elolvasása</string>
+    <string name="read_full_license">Licenc megtekintése</string>
     <string name="title_activity_history">Előzmények</string>
     <string name="action_history">Előzmények</string>
     <string name="delete_item_search_history">Törli ezt az elemet a keresési előzmények közül\?</string>
@@ -259,7 +258,7 @@
     <string name="resize_zoom">Nagyítás</string>
     <string name="caption_auto_generated">Automatikusan létrehozott</string>
     <string name="caption_setting_title">Feliratok</string>
-    <string name="caption_setting_description">Feliratok méretének és hátterének stílusbeli módosítása. A módosítások életbe lépésehez az alkalmazás újraindítása szükséges</string>
+    <string name="caption_setting_description">A lejátszó feliratának, szövegméretének és háttérstílusainak módosítása. A módosítások érvénybe lépéséhez újra kell indítani az alkalmazást</string>
     <string name="import_title">Importálás</string>
     <string name="import_from">Importálás a következőből</string>
     <string name="export_to">Exportálás a következőbe</string>
@@ -361,7 +360,7 @@
     <string name="auto">Automatikus</string>
     <string name="grid">Rács</string>
     <string name="list">Lista</string>
-    <string name="list_view_mode">Lista nézet</string>
+    <string name="list_view_mode">Listanézet mód</string>
     <string name="missing_file">A fájl áthelyezve vagy törölve</string>
     <string name="download_to_sdcard_error_message">A külső SD-kártyára történő mentés nem lehetséges. Visszaállítja a letöltési mappa helyét\?</string>
     <string name="download_to_sdcard_error_title">A külső tárhely nem érhető el</string>
@@ -399,7 +398,7 @@
     <string name="show_thumbnail_summary">Bélyegkép használata a zárképernyőn és az értesítéseken is</string>
     <string name="radio">Rádió</string>
     <string name="night_theme_summary">Válassza ki a kedvenc éjszakai témáját — %s</string>
-    <string name="select_night_theme_toast">Lent kiválaszthatja a kedvenc éjszakai témáját</string>
+    <string name="select_night_theme_toast">Az alábbiakban kiválaszthatja kedvenc éjszakai témáját</string>
     <string name="recently_added">Nemrég hozzáadott</string>
     <string name="new_seek_duration_toast">Az ExoPlayer korlátai miatt az előre- és visszatekerés időtartama %d másodpercre lett állítva</string>
     <string name="feed_groups_header_title">Csatornacsoportok</string>
@@ -499,7 +498,7 @@
 \nRemélhetőleg egy következő verzióban már támogatott lesz.</string>
     <string name="no_app_to_open_intent">Az eszközön nincs olyan alkalmazás, amely meg tudja ezt nyitni</string>
     <string name="youtube_music_premium_content">Ez a videó csak YouTube Music Prémium előfizetők számára érhető el, így nem tekinthető meg és nem tölthető le a NewPipe-pal.</string>
-    <string name="auto_device_theme_title">Automatikus (rendszertéma)</string>
+    <string name="auto_device_theme_title">Automatikus (eszköz témája)</string>
     <string name="paid_content">Ez a tartalom csak előfizetőknek érhető el, nem tekinthető meg és nem tölthető le a NewPipe-pal.</string>
     <string name="georestricted_content">Ez a tartalom nem érhető el az országában.</string>
     <string name="private_content">Ez a tartalom privát, így nem tekinthető meg és nem tölthető le a NewPipe-pal.</string>
@@ -530,7 +529,7 @@
     <string name="show_channel_details">Csatorna részleteinek megjelenítése</string>
     <string name="hold_to_append">Tartsa a sorba állításhoz</string>
     <string name="default_kiosk_page_summary">Alapértelmezett témagyűjtemény</string>
-    <string name="app_license">A NewPipe egy copyleft szabad szoftver: tetszése szerint felhasználhatja, tanulmányozhatja, megoszthatja és fejlesztheti. Egész pontosan a Free Software Foundation által kiadott GNU General Public License 3-as, vagy (választható módon) újabb verziójának feltételei szerint módosíthatja vagy adhatja tovább.</string>
+    <string name="app_license">A NewPipe copyleft, szabad szoftver: Ön szabadon használhatja, tanulmányozhatja, megoszthatja és továbbfejlesztheti. Különösen jogosult arra, hogy a Free Software Foundation által közzétett GNU General Public License feltételei szerint terjessze és/vagy módosítsa, akár a licenc 3-as verziója, akár – saját belátása szerint – bármely későbbi verziója alapján.</string>
     <string name="recaptcha_solve">Megoldás</string>
     <string name="subtitle_activity_recaptcha">Nyomja meg a „Kész” gombot, ha megoldotta</string>
     <string name="msg_calculating_hash">Ujjlenyomat számítása</string>
@@ -673,7 +672,7 @@
     <string name="faq_title">Gyakran ismételt kérdések</string>
     <string name="faq">Megtekintés a weboldalon</string>
     <string name="sort">Rendezés</string>
-    <string name="faq_description">Ha problémája van az alkalmazás használatával, akkor nézze meg az ezekre a gyakori kérdésekre adott válaszokat!</string>
+    <string name="faq_description">Ha problémái adódnak az alkalmazás használata során, érdemes áttekintenie a gyakori kérdésekre adott válaszokat!</string>
     <string name="fast_mode">Gyors mód</string>
     <string name="import_subscriptions_hint">Feliratkozások importálása vagy exportálása a 3 pontos menüből</string>
     <string name="app_update_unavailable_toast">Ön a Newpipe legfrissebb verzióját futtatja</string>
@@ -720,9 +719,9 @@
     <string name="remove_duplicates_title">Eltávolítja az ismétlődéseket\?</string>
     <string name="remove_duplicates_message">Eltávolítja az összes ismétlődő közvetítést ebből a lejátszólistáról\?</string>
     <string name="audio_track_type_original">eredeti</string>
-    <string name="main_tabs_position_title">Kezdőlap pozíciója</string>
+    <string name="main_tabs_position_title">Fő lapok elhelyezkedése</string>
     <string name="disable_media_tunneling_automatic_info">A médiacsatornázás alapértelmezetten le van tiltva az eszközén, mivel a saját eszközmodellje nem támogatja azt.</string>
-    <string name="main_tabs_position_summary">Kezdőlapválasztó alulra helyezése</string>
+    <string name="main_tabs_position_summary">A fő lapválasztó elhelyezése alulra</string>
     <string name="no_live_streams">Nincs élő közvetítés</string>
     <string name="no_streams">Nincs adatfolyam</string>
     <string name="notification_actions_summary_android13">Az alábbi értesítési műveletek szerkesztéséhez koppintson rá. Az első három műveletet (lejátszás/szünet, előző és következő) a rendszer állítja be, és nem szabhatók testre.</string>
@@ -778,7 +777,7 @@
     <string name="error_insufficient_storage">Nincs elég szabad hely az eszközön</string>
     <string name="yes">Igen</string>
     <string name="no">Nem</string>
-    <string name="settings_category_backup_restore_title">Biztonsági mentés és helyreállítás</string>
+    <string name="settings_category_backup_restore_title">Biztonsági mentés és visszaállítás</string>
     <string name="auto_update_check_description">A NewPipe időről időre automatikusan ellenőrzi az új verziókat, és értesít, amint azok elérhetővé válnak.
 \nSzeretné engedélyezni ezt?</string>
     <string name="reset_settings_title">Beállítások alaphelyzetbe állítása</string>
@@ -841,4 +840,6 @@
     <string name="api23_requirement_dialog_title">A NewPipe megszünteti az Android 5 támogatását</string>
     <string name="api23_requirement_dialog_message">Sajnos a NewPipe néhány olyan programkönyvtárra támaszkodik, amelyek megszüntették az Android 5.0 és 5.1 verziójának támogatását. A NewPipe következő verziója ezért sajnos csak Android 6 vagy újabb rendszerrel rendelkező eszközökön fog működni. További információt a blogbejegyzésben olvashat.</string>
     <string name="api23_requirement_dialog_blogpost">Blogbejegyzés</string>
+    <string name="channel_tab_podcasts">Podcastok</string>
+    <string name="channel_tab_courses">Tanfolyamok</string>
 </resources>

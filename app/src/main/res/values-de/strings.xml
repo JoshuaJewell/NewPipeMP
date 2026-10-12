@@ -20,8 +20,8 @@
     <string name="show_play_with_kodi_title">Option „Mit Kodi abspielen“ anzeigen</string>
     <string name="show_play_with_kodi_summary">Option anzeigen, um Videos mit Kodi abzuspielen</string>
     <string name="play_audio">Audio</string>
-    <string name="default_audio_format_title">Bevorzugtes Audioformat</string>
-    <string name="download_dialog_title">Download</string>
+    <string name="default_audio_format_title">Standard-Audioformat</string>
+    <string name="download_dialog_title">Herunterladen</string>
     <string name="show_next_and_similar_title">„Nächste“ und „Ähnliche“ Videos anzeigen</string>
     <string name="unsupported_url">Nicht unterstützte URL</string>
     <string name="settings_category_video_audio_title">Video und Audio</string>
@@ -87,13 +87,13 @@
     <string name="all">Alle</string>
     <string name="disabled">Deaktiviert</string>
     <string name="open_in_popup_mode">Im Pop-up-Modus öffnen</string>
-    <string name="default_video_format_title">Bevorzugtes Videoformat</string>
+    <string name="default_video_format_title">Standard-Videoformat</string>
     <string name="popup_playing_toast">Im Pop-up-Modus abspielen</string>
     <string name="msg_popup_permission">Diese Berechtigung ist für das
 \nÖffnen im Pop-up-Modus erforderlich</string>
-    <string name="default_popup_resolution_title">Standardauflösung des Pop-ups</string>
+    <string name="default_popup_resolution_title">Pop-up-Standardauflösung</string>
     <string name="show_higher_resolutions_title">Höhere Auflösungen anzeigen</string>
-    <string name="show_higher_resolutions_summary">Nur manche Geräte können Videos in 2K/4K abspielen</string>
+    <string name="show_higher_resolutions_summary">Nur manche Geräte können 2K-/4K-Videos abspielen</string>
     <string name="controls_background_title">Hintergrund</string>
     <string name="controls_popup_title">Pop-up</string>
     <string name="popup_remember_size_pos_title">Eigenschaften des Pop-ups merken</string>
@@ -110,7 +110,7 @@
     <string name="tab_about">Über &amp; FAQ</string>
     <string name="app_description">Freies und schlankes Streaming für Android.</string>
     <string name="app_license_title">NewPipes Lizenz</string>
-    <string name="contribution_encouragement">Ob Ideen, Übersetzungen, Design-Änderungen, Code-Aufräumung oder richtig große Code-Änderungen — Hilfe ist immer willkommen. Je mehr geholfen wird, desto besser wird NewPipe!</string>
+    <string name="contribution_encouragement">Ob Ideen, Übersetzungen, Design-Änderungen, Code-Aufräumen oder richtig große Code-Änderungen — Hilfe ist immer willkommen. Je mehr geholfen wird, desto besser wird NewPipe!</string>
     <string name="title_licenses">Drittanbieter-Lizenzen</string>
     <string name="view_on_github">Auf GitHub ansehen</string>
     <string name="contribution_title">Beitragen</string>
@@ -186,7 +186,7 @@
     <string name="give_back">Zurückgeben</string>
     <string name="website_title">Website</string>
     <string name="website_encouragement">Besuche die NewPipe-Website für weitere Informationen und Neuigkeiten.</string>
-    <string name="donation_encouragement">NewPipe wird von Freiwilligen entwickelt, die ihre Freizeit dafür verwenden, dir die beste Nutzererfahrung zu bieten. Gib etwas zurück, indem du den Entwicklern hilfst, NewPipe noch weiter zu verbessern, während sie sich an einer Tasse Kaffee erfreuen.</string>
+    <string name="donation_encouragement">NewPipe wird von Freiwilligen entwickelt, die ihre Freizeit dafür verwenden, dir die beste Nutzungserfahrung zu bieten. Gib etwas zurück, indem du den Entwicklern hilfst, NewPipe noch weiter zu verbessern, während sie sich an einer Tasse Kaffee erfreuen.</string>
     <string name="no_player_found_toast">Kein Stream-Player gefunden (du kannst VLC installieren, um den Stream abzuspielen).</string>
     <string name="default_content_country_title">Bevorzugtes Land des Inhalts</string>
     <string name="always">Immer</string>
@@ -306,16 +306,14 @@
     <string name="one_item_deleted">1 Element gelöscht.</string>
     <string name="app_license">NewPipe ist freie Copyleft-Software: Du kannst sie nach Belieben benutzen, untersuchen, mit anderen teilen und verbessern. Insbesondere kannst du sie unter den von der Free Software Foundation veröffentlichten Bedingungen der GNU General Public License, in der Version 3 der Lizenz oder (nach deiner Wahl) jeder späteren Version, weitergeben und/oder verändern.</string>
     <string name="import_settings">Möchtest du auch Einstellungen importieren\?</string>
-    <string name="privacy_policy_title">NewPipes Datenschutzbestimmung</string>
-    <string name="privacy_policy_encouragement">Dem NewPipe-Projekt ist Datenschutz sehr wichtig. Deshalb sammelt diese App keine Daten ohne deine Zustimmung.
-\nNewPipes Datenschutzbestimmungen erklären im Detail, welche Daten beim Absenden eines Absturzberichtes verschickt und gespeichert werden.</string>
-    <string name="read_privacy_policy">Datenschutzbestimmungen lesen</string>
+    <string name="privacy_policy_title">NewPipes Datenschutzerklärung</string>
+    <string name="privacy_policy_encouragement">Dem NewPipe-Projekt ist Datenschutz sehr wichtig. Daher sammelt die App keinerlei Daten ohne deine Zustimmung.\nNewPipes Datenschutzerklärung erläutert ausführlich, welche Daten beim Senden eines Absturzberichts übermittelt und gespeichert werden.</string>
+    <string name="read_privacy_policy">Datenschutzerklärung lesen</string>
     <string name="accept">Akzeptieren</string>
     <string name="decline">Ablehnen</string>
-    <string name="start_accept_privacy_policy">Um der europäischen Datenschutz-Grundverordnung (DSGVO) gerecht zu werden, weisen wir hiermit auf NewPipes Datenschutzerklärung hin. Bitte lies sie sorgfältig durch.
-\nDu musst den Datenschutzrichtlinien zustimmen, um den Fehlerbericht an uns zu senden.</string>
+    <string name="start_accept_privacy_policy">Um der europäischen Datenschutz-Grundverordnung (DSGVO) gerecht zu werden, weisen wir hiermit auf NewPipes Datenschutzerklärung hin. Bitte lies sie sorgfältig durch. \nDu musst dieser zustimmen, um den Fehlerbericht an uns zu senden.</string>
     <string name="limit_data_usage_none_description">Unbegrenzt</string>
-    <string name="limit_mobile_data_usage_title">Auflösung bei Verwendung mobiler Daten begrenzen</string>
+    <string name="limit_mobile_data_usage_title">Auflösung bei der Nutzung mobiler Daten begrenzen</string>
     <string name="minimize_on_exit_title">Beim App-Wechsel minimieren</string>
     <string name="minimize_on_exit_summary">Aktion beim Umschalten auf eine andere App vom Haupt-Videoplayer — %s</string>
     <string name="minimize_on_exit_none_description">Keine</string>
@@ -354,7 +352,7 @@
     <string name="low_quality_smaller">Niedrige Qualität (kleiner)</string>
     <string name="dont_show">Nicht anzeigen</string>
     <string name="app_update_available_notification_title">Eine NewPipe-Aktualisierung ist verfügbar!</string>
-    <string name="missions_header_finished">Fertig</string>
+    <string name="missions_header_finished">Abgeschlossen</string>
     <string name="missions_header_pending">Ausstehend</string>
     <string name="paused">pausiert</string>
     <string name="queued">eingereiht</string>
@@ -437,7 +435,7 @@
     <string name="peertube_instance_add_exists">Instanz existiert bereits</string>
     <string name="local">Lokal</string>
     <string name="recently_added">Kürzlich hinzugefügt</string>
-    <string name="playlist_no_uploader">Auto-generiert (kein Autor gefunden)</string>
+    <string name="playlist_no_uploader">Automatisch erzeugt (kein Autor gefunden)</string>
     <string name="choose_instance_prompt">Eine Instanz wählen</string>
     <string name="peertube_instance_url_summary">Bevorzugte Peertube-Instanzen auswählen</string>
     <string name="peertube_instance_add_https_only">Es werden nur HTTPS-Adressen unterstützt</string>
@@ -593,7 +591,7 @@
     <string name="recaptcha_solve">Lösen</string>
     <string name="download_has_started">Download hat begonnen</string>
     <string name="select_night_theme_toast">Du kannst dein bevorzugtes Nachtdesign unten auswählen</string>
-    <string name="night_theme_summary">Wähle dein bevorzugtes Nachtdesign — %s</string>
+    <string name="night_theme_summary">Wähle dein bevorzugtes Nachtdesign aus — %s</string>
     <string name="auto_device_theme_title">Automatisch (Gerätedesign)</string>
     <string name="night_theme_title">Nachtdesign</string>
     <string name="show_channel_details">Kanaldetails anzeigen</string>
@@ -666,7 +664,7 @@
 \nBitte installiere einen Storage Access Framework kompatiblen Dateimanager</string>
     <string name="detail_pinned_comment_view_description">Angehefteter Kommentar</string>
     <string name="leak_canary_not_available">LeakCanary ist nicht verfügbar</string>
-    <string name="progressive_load_interval_exoplayer_default">ExoPlayer Standard</string>
+    <string name="progressive_load_interval_exoplayer_default">ExoPlayer-Standard</string>
     <string name="notifications">Benachrichtigungen</string>
     <string name="streams_notification_channel_description">Benachrichtigen über neue abonnierbare Streams</string>
     <string name="streams_notification_channel_name">Neue Streams</string>
@@ -870,4 +868,6 @@
     <string name="api23_requirement_dialog_blogpost">Blogbeitrag</string>
     <string name="api23_requirement_dialog_title">NewPipe stellt die Unterstützung für Android 5 ein</string>
     <string name="api23_requirement_dialog_message">Leider ist NewPipe auf einige Bibliotheken angewiesen, welche die Unterstützung für Android 5.0 und 5.1 eingestellt haben. Die nächste Version von NewPipe wird daher leider nur auf Geräten mit Android 6 oder höher funktionieren. Mehr dazu im Blogbeitrag.</string>
+    <string name="channel_tab_podcasts">Podcasts</string>
+    <string name="channel_tab_courses">Kurse</string>
 </resources>

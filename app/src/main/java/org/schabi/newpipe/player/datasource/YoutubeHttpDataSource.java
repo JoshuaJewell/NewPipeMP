@@ -12,12 +12,9 @@ import static com.google.android.exoplayer2.upstream.DefaultHttpDataSource.DEFAU
 import static com.google.android.exoplayer2.upstream.HttpUtil.buildRangeRequestHeader;
 import static com.google.android.exoplayer2.util.Assertions.checkNotNull;
 import static com.google.android.exoplayer2.util.Util.castNonNull;
-import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getAndroidUserAgent;
-import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getIosUserAgent;
-import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.isAndroidStreamingUrl;
-import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.isIosStreamingUrl;
+import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getVisionOsUserAgent;
+import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.isVisionOsStreamingUrl;
 import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.isWebStreamingUrl;
-import static org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.isWebEmbeddedPlayerStreamingUrl;
 import static java.lang.Math.min;
 
 import android.net.Uri;
@@ -659,8 +656,7 @@ public final class YoutubeHttpDataSource extends BaseDataSource implements HttpD
             }
         }
 
-        if (isWebStreamingUrl(requestUrl)
-                || isWebEmbeddedPlayerStreamingUrl(requestUrl)) {
+        if (isWebStreamingUrl(requestUrl)) {
             httpURLConnection.setRequestProperty(HttpHeaders.ORIGIN, YOUTUBE_BASE_URL);
             httpURLConnection.setRequestProperty(HttpHeaders.REFERER, YOUTUBE_BASE_URL);
             httpURLConnection.setRequestProperty(HttpHeaders.SEC_FETCH_DEST, "empty");
@@ -670,16 +666,9 @@ public final class YoutubeHttpDataSource extends BaseDataSource implements HttpD
 
         httpURLConnection.setRequestProperty(HttpHeaders.TE, "trailers");
 
-        final boolean isAndroidStreamingUrl = isAndroidStreamingUrl(requestUrl);
-        final boolean isIosStreamingUrl = isIosStreamingUrl(requestUrl);
-        if (isAndroidStreamingUrl) {
-            // Improvement which may be done: find the content country used to request YouTube
-            // contents to add it in the user agent instead of using the default
+        if (isVisionOsStreamingUrl(requestUrl)) {
             httpURLConnection.setRequestProperty(HttpHeaders.USER_AGENT,
-                    getAndroidUserAgent(null));
-        } else if (isIosStreamingUrl) {
-            httpURLConnection.setRequestProperty(HttpHeaders.USER_AGENT,
-                    getIosUserAgent(null));
+                    getVisionOsUserAgent(null));
         } else {
             // non-mobile user agent
             httpURLConnection.setRequestProperty(HttpHeaders.USER_AGENT, DownloaderImpl.USER_AGENT);

@@ -46,7 +46,7 @@
     <string name="content_not_available">Contenuto non disponibile</string>
     <string name="parsing_error">Impossibile analizzare il sito web</string>
     <string name="could_not_setup_download_menu">Impossibile impostare il menu di download</string>
-    <string name="content">Contenuti</string>
+    <string name="content">Contenuto</string>
     <string name="show_age_restricted_content_title">Mostra contenuti con restrizioni di età</string>
     <string name="main_bg_subtitle">Tocca la lente d\'ingrandimento per iniziare.</string>
     <string name="duration_live">In diretta</string>
@@ -103,13 +103,13 @@
 \nper utilizzare il lettore popup</string>
     <string name="title_licenses">Licenze di terze parti</string>
     <string name="copyright" formatted="true">© %1$s di %2$s protetto da licenza %3$s</string>
-    <string name="tab_about">Info e domande frequenti</string>
+    <string name="tab_about">Informazioni e domande frequenti</string>
     <string name="tab_licenses">Licenze</string>
     <string name="app_description">Streaming libero e leggero su Android.</string>
-    <string name="view_on_github">Mostra su GitHub</string>
+    <string name="view_on_github">Vedi su GitHub</string>
     <string name="app_license_title">Licenza di NewPipe</string>
-    <string name="contribution_encouragement">Un aiuto è sempre gradito: traduzioni, modifiche al design, pulizia del codice, cambiamenti radicali. Più si fa, meglio è!</string>
-    <string name="read_full_license">Leggi la Licenza</string>
+    <string name="contribution_encouragement">Un aiuto è sempre gradito per qualsiasi cosa: traduzioni, modifiche al design, pulizia del codice o cambiamenti radicali. Più si fa, meglio è!</string>
+    <string name="read_full_license">Leggi la licenza</string>
     <string name="contribution_title">Contribuisci</string>
     <string name="title_activity_about">Informazioni su NewPipe</string>
     <string name="subscribe_button_title">Iscriviti</string>
@@ -125,7 +125,7 @@
     <string name="enable_watch_history_summary">Salva la cronologia degli elementi visualizzati</string>
     <string name="resume_on_audio_focus_gain_title">Riprendi la riproduzione</string>
     <string name="resume_on_audio_focus_gain_summary">Continua a riprodurre dopo le interruzioni (es. telefonate)</string>
-    <string name="settings_category_downloads_title">Download</string>
+    <string name="settings_category_downloads_title">Scaricamenti</string>
     <string name="settings_file_charset_title">Caratteri ammessi per i nomi dei file</string>
     <string name="settings_file_replacement_character_summary">I caratteri non validi vengono sostituiti con il valore specificato</string>
     <string name="settings_file_replacement_character_title">Carattere sostitutivo</string>
@@ -184,10 +184,10 @@
     <string name="start_here_on_background">Riproduci in sottofondo</string>
     <string name="start_here_on_popup">Riproduci nel lettore popup</string>
     <string name="donation_title">Dona</string>
-    <string name="website_title">Sito</string>
-    <string name="website_encouragement">Visita il sito di NewPipe per informazioni e novità.</string>
-    <string name="donation_encouragement">NewPipe è sviluppato da volontari che impiegano il loro tempo libero per offrire agli utenti un\'esperienza migliore. Restituisci il favore, aiutandoli a rendere NewPipe ancora più piacevole, mentre si gustano una tazza di caffè.</string>
-    <string name="give_back">Restituisci</string>
+    <string name="website_title">Sito web</string>
+    <string name="website_encouragement">Visita il sito di NewPipe per maggiori info e notizie.</string>
+    <string name="donation_encouragement">NewPipe è sviluppato da volontari che impiegano il loro tempo libero per offrirti un\'esperienza d\'uso migliore. Restituisci il favore, aiutandoli a rendere NewPipe ancora più piacevole mentre si gustano una tazza di caffè.</string>
+    <string name="give_back">Restituisci il favore</string>
     <string name="default_content_country_title">Paese predefinito per i contenuti</string>
     <string name="switch_to_background">Passa in sottofondo</string>
     <string name="switch_to_popup">Passa alla modalità popup</string>
@@ -295,7 +295,7 @@
     <string name="preferred_open_action_settings_title">Azione di apertura preferita</string>
     <string name="preferred_open_action_settings_summary">Azione predefinita all\'apertura del contenuto — %s</string>
     <string name="caption_setting_title">Sottotitoli</string>
-    <string name="caption_setting_description">Modifica dimensione e stile dei sottotitoli. Riavviare per applicare le modifiche</string>
+    <string name="caption_setting_description">Modifica la scala del testo dei sottotitoli e gli stili di sfondo. Richiede il riavvio dell\'app per applicare</string>
     <string name="clear_views_history_title">Elimina la cronologia delle visualizzazioni</string>
     <string name="clear_views_history_summary">Elimina la cronologia degli elementi riprodotti e le posizioni di riproduzione</string>
     <string name="delete_view_history_alert">Eliminare la cronologia delle visualizzazioni\?</string>
@@ -305,12 +305,12 @@
     <string name="delete_search_history_alert">Eliminare la cronologia delle ricerche\?</string>
     <string name="search_history_deleted">Cronologia delle ricerche eliminata</string>
     <string name="one_item_deleted">1 elemento eliminato.</string>
-    <string name="app_license">NewPipe è un software libero con licenza copyleft: si può utilizzare, studiare, condividere e migliorare a proprio piacimento. In particolare, è possibile ridistribuirlo e/o modificarlo secondo i termini della GNU General Public License (Free Software Foundation), nella versione 3 o successiva, a propria discrezione.</string>
+    <string name="app_license">NewPipe è software libre copyleft: puoi utilizzare, studiare, condividere e migliorare a volontà il suo codice sorgente. Nello specifico è possibile ridistribuirlo e/o modificarlo in base ai termini della GNU General Public License come pubblicato dalla Free Software Foundation, sia la versione 3 della licenza sia (a vostra scelta) qualsiasi versione successiva.</string>
     <string name="import_settings">Vuoi anche importare le impostazioni?</string>
-    <string name="privacy_policy_title">Informativa sulla privacy</string>
+    <string name="privacy_policy_title">Politica di riservatezza di NewPipe</string>
     <string name="privacy_policy_encouragement">Il progetto NewPipe tiene molto alla tua privacy. Perciò, l\'app non raccoglie alcun dato senza il tuo consenso.
 \nL\'informativa sulla privacy spiega nel dettaglio quali dati vengono trattati e memorizzati durante l\'invio di segnalazioni per arresti anomali.</string>
-    <string name="read_privacy_policy">Leggi l\'informativa sulla privacy</string>
+    <string name="read_privacy_policy">Leggi la politica di riservatezza</string>
     <string name="start_accept_privacy_policy">Per rispettare il regolamento europeo sulla protezione dei dati (GDPR), richiamiamo la vostra attenzione sull\'informativa sulla privacy di NewPipe. Si prega di leggerla attentamente.
 \nDeve essere accettata per poter inviare la segnalazione.</string>
     <string name="accept">Accetto</string>
@@ -344,10 +344,10 @@
     <string name="main_page_content_summary">Schede mostrate nella pagina principale</string>
     <string name="updates_setting_title">Aggiornamenti</string>
     <string name="updates_setting_description">Mostra una notifica per suggerire l\'aggiornamento dell\'app se una nuova versione è disponibile</string>
-    <string name="list_view_mode">Modalità visualizzazione lista</string>
+    <string name="list_view_mode">Modalità vista elenco</string>
     <string name="list">Lista</string>
     <string name="grid">Griglia</string>
-    <string name="auto">Automatica</string>
+    <string name="auto">Auto</string>
     <string name="app_update_available_notification_title">Aggiornamento di NewPipe disponibile!</string>
     <string name="missions_header_finished">Completati</string>
     <string name="missions_header_pending">In corso</string>
@@ -595,7 +595,7 @@
     <string name="featured">In evidenza</string>
     <string name="recaptcha_solve">Risolvi</string>
     <string name="download_has_started">Download avviato</string>
-    <string name="select_night_theme_toast">Qua sotto è possibile selezionare il tema notturno preferito</string>
+    <string name="select_night_theme_toast">Puoi selezionare il tuo tema notturno qui sotto</string>
     <string name="night_theme_summary">Seleziona il tema notturno preferito — %s</string>
     <string name="auto_device_theme_title">Automatico (tema del dispositivo)</string>
     <string name="night_theme_title">Tema notturno</string>
@@ -628,8 +628,8 @@
     <string name="downloads_storage_use_saf_summary_api_29">A partire da Android 10 è supportato solo il Framework di accesso all\'archiviazione</string>
     <string name="downloads_storage_ask_summary_no_saf_notice">È necessario specificare la destinazione di ogni dowload</string>
     <string name="no_dir_yet">Non è impostata alcuna cartella per i file scaricati, scegliere quella predefinita</string>
-    <string name="off">Disattivata</string>
-    <string name="on">Attiva</string>
+    <string name="off">Off</string>
+    <string name="on">On</string>
     <string name="tablet_mode_title">Modalità tablet</string>
     <string name="dont_show">Non mostrare</string>
     <string name="low_quality_smaller">Qualità bassa (più piccola)</string>
@@ -710,16 +710,16 @@
     <string name="unknown_format">Formato sconosciuto</string>
     <string name="progressive_load_interval_title">Dimensione intervallo di caricamento della riproduzione</string>
     <string name="faq_title">Domande frequenti</string>
-    <string name="faq_description">Se riscontri problemi nell\'utilizzo dell\'app, dai un\'occhiata alle risposte delle domande più comuni!</string>
+    <string name="faq_description">Se stai avendo problemi durante l\'uso dell\'app, dai un occhio alle risposte a queste domande comuni!</string>
     <string name="sort">Ordina</string>
-    <string name="faq">Visualizza sul sito</string>
+    <string name="faq">Guarda sul sito web</string>
     <string name="fast_mode">Recupero veloce</string>
     <string name="app_update_available_notification_text">Premi per scaricare %s</string>
     <string name="app_update_unavailable_toast">Stai già usando l\'ultima versione di NewPipe</string>
     <string name="import_subscriptions_hint">Importa o esporta iscrizioni dal menu a 3 punti</string>
     <string name="night_theme_available">Questa opzione è disponibile solo se %s è selezionato come Tema</string>
     <string name="msg_failed_to_copy">Copia negli appunti non riuscita</string>
-    <string name="card">Schede</string>
+    <string name="card">Scheda</string>
     <string name="unset_playlist_thumbnail">Disattiva copertina permanente</string>
     <string name="duplicate_in_playlist">Le playlist in grigio contengono già questo elemento.</string>
     <string name="playlist_add_stream_success_duplicate">Doppione aggiunto %d volta/e</string>
@@ -762,8 +762,8 @@
     <string name="always_use_exoplayer_set_output_surface_workaround_summary">Questa soluzione alternativa rilascia e re-istanzia i codec video quando si verifica una modifica della superficie, invece di impostare direttamente la superficie sul codec. Già usata da ExoPlayer su alcuni dispositivi con questo problema, questa impostazione ha effetto solo su Android 6 e versioni successive
 \n
 \nL\'attivazione di questa opzione potrebbe impedire errori di riproduzione passando al lettore video attuale o passando a schermo intero</string>
-    <string name="main_tabs_position_title">Posizione delle schede principali</string>
-    <string name="main_tabs_position_summary">Sposta in fondo il selettore della scheda principale</string>
+    <string name="main_tabs_position_title">Posizione schede principali</string>
+    <string name="main_tabs_position_summary">Sposta le schede principali in fondo</string>
     <string name="disable_media_tunneling_automatic_info">Il tunneling multimediale è stato disabilitato per impostazione predefinita sul dispositivo in uso, poiché è noto che il modello del dispositivo non lo supporta.</string>
     <string name="no_streams">Nessuna trasmissione</string>
     <string name="no_live_streams">Nessuna trasmissione in diretta</string>
@@ -887,4 +887,6 @@
     <string name="api23_requirement_dialog_title">NewPipe sta abbandonando il supporto per Android 5</string>
     <string name="api23_requirement_dialog_message">Purtroppo NewPipe dipende da alcune librerie che hanno abbandonato il supporto per Android 5.0 e 5.1. La prossima versione di NewPipe funzionerà solo su dispositivi con Android 6 o superiore, purtroppo. Maggiori info nel post del blog.</string>
     <string name="api23_requirement_dialog_blogpost">Post del blog</string>
+    <string name="channel_tab_podcasts">Podcast</string>
+    <string name="channel_tab_courses">Corsi</string>
 </resources>

@@ -4,8 +4,8 @@
     <string name="upload_date_text">Публикувано на %1$s</string>
     <string name="no_player_found">Не е намерен стрийм плейър. Инсталиране на VLC\?</string>
     <string name="install">Инсталиране</string>
-    <string name="cancel">Отмяна</string>
-    <string name="open_in_browser">Отваряне в браузър</string>
+    <string name="cancel">Отказ</string>
+    <string name="open_in_browser">Отвори в браузър</string>
     <string name="open_in_popup_mode">Отваряне в прозорец</string>
     <string name="share">Споделяне</string>
     <string name="download">Изтегляне</string>
@@ -42,7 +42,7 @@
     <string name="play_audio">Аудио</string>
     <string name="default_audio_format_title">Аудио формат по подразбиране</string>
     <string name="default_video_format_title">Видео формат по подразбиране</string>
-    <string name="theme_title">Тема на външния вид</string>
+    <string name="theme_title">Тема</string>
     <string name="light_theme_title">Светла</string>
     <string name="dark_theme_title">Тъмна</string>
     <string name="black_theme_title">Черна</string>
@@ -65,7 +65,7 @@
     <string name="settings_category_player_behavior_title">Поведение</string>
     <string name="settings_category_video_audio_title">Видео и аудио</string>
     <string name="settings_category_history_title">История и кеш</string>
-    <string name="settings_category_appearance_title">Външност</string>
+    <string name="settings_category_appearance_title">Външен вид</string>
     <string name="background_player_playing_toast">Възпроизвеждане във фонов режим</string>
     <string name="popup_playing_toast">Възпроизвеждане в подпрозорец</string>
     <string name="content">Съдържание</string>
@@ -139,12 +139,12 @@
     <string name="settings_file_replacement_character_summary">Невалидните символи се заменят с тази стойност</string>
     <string name="settings_file_replacement_character_title">Символ за замяна</string>
     <string name="charset_letters_and_digits">Букви и цифри</string>
-    <string name="title_activity_about">За NewPipe</string>
-    <string name="title_licenses">Лицензи от трети страни</string>
-    <string name="tab_about">За приложението</string>
+    <string name="title_activity_about">Относно NewPipe</string>
+    <string name="title_licenses">Лицензи на трети страни</string>
+    <string name="tab_about">За нас и ЧЗВ</string>
     <string name="tab_licenses">Лицензи</string>
-    <string name="app_description">Безплатно и леко поточно предаване за Android.</string>
-    <string name="view_on_github">Виж в GitHub</string>
+    <string name="app_description">Безплатно леко стрийминг на Android.</string>
+    <string name="view_on_github">Преглед в GitHub</string>
     <string name="controls_download_desc">Изтегляне на стрийм файл</string>
     <string name="show_info">Покажи информация</string>
     <string name="tab_bookmarks">Отметнати плейлисти</string>
@@ -187,18 +187,17 @@
     <string name="create">Създай</string>
     <string name="dismiss">Откажи</string>
     <string name="copyright" formatted="true">© %1$s от %2$s под лиценза %3$s</string>
-    <string name="contribution_title">Съдействайте</string>
-    <string name="contribution_encouragement">За всичко, което се сетите: превод, промени по дизайна, изчистване на кода или много сериозни промени по кода – помощта е винаги добре дошла. Колкото повече развитие, толкова по-добре!</string>
-    <string name="donation_title">Дарение</string>
-    <string name="donation_encouragement">NewPipe се разработва от доброволци, които отделят от своето време, за да предоставят най-доброто потребителско изживяване. Включете се в разработката като почерпите разработчиците с една чашка кафе, които да изпият, докато правят NewPipe още по-добро приложение.</string>
-    <string name="give_back">Дари</string>
+    <string name="contribution_title">Допринесете</string>
+    <string name="contribution_encouragement">Независимо дали имате идеи за превод, промени в дизайна, почистване на кода или наистина сериозни промени в кода – помощта винаги е добре дошла. Колкото повече се направи, толкова по-добре става!</string>
+    <string name="donation_title">Дарете</string>
+    <string name="donation_encouragement">NewPipe е разработен от доброволци, които прекарват свободното си време, за да ви осигурят най-доброто потребителско изживяване. Дарете, за да помогнете на разработчиците да направят NewPipe още по-добър, докато се наслаждават на чаша кафе.</string>
+    <string name="give_back">Върни обратно</string>
     <string name="website_title">Уебсайт</string>
-    <string name="website_encouragement">Посетете сайта на NewPipe за повече информация и новини.</string>
-    <string name="privacy_policy_title">Политиката на NewPipe за личните данни</string>
-    <string name="privacy_policy_encouragement">Проектът NewPipe се отнася много сериозно към вашата поверителност. За това, приложението не събира никакви данни без вашето съгласие.
-\nНашата политика за личните данни обяснява подробно какви данни изпращате и къде се съхраняват, когато изпращате съобщения за грешки.</string>
-    <string name="read_privacy_policy">Прочетете нашата политика за поверителност</string>
-    <string name="app_license_title">Лицензът на NewPipe</string>
+    <string name="website_encouragement">Посетете уебсайта на NewPipe за повече информация и новини.</string>
+    <string name="privacy_policy_title">Политика за поверителност на NewPipe</string>
+    <string name="privacy_policy_encouragement">Проектът NewPipe приема вашата поверителност много сериозно. Затова приложението не събира никакви данни без вашето съгласие.\nПолитиката за поверителност на NewPipe подробно обяснява какви данни се изпращат и съхраняват при изпращане на доклад за срив.</string>
+    <string name="read_privacy_policy">Прочетете политиката за поверителност</string>
+    <string name="app_license_title">Лиценз на NewPipe</string>
     <string name="no_player_found_toast">Липсва стрийм плейър (можете да изтеглите VLC, за да пуснете стрийма).</string>
     <string name="show_hold_to_append_summary">Покажи съвет при натискане на фона или изскачащия бутон във видеоклипа \"Подробности:“</string>
     <string name="clear_views_history_summary">Изтрива историята на възпроизвежданите стриймове и позицията на възпроизвеждането</string>
@@ -216,7 +215,7 @@
     <string name="recaptcha_request_toast">Изисква се въвеждане на reCAPTCHA</string>
     <string name="settings_category_downloads_title">Изтегляне</string>
     <string name="charset_most_special_characters">Повечето специални символи</string>
-    <string name="app_license">NewPipe е свободен софтуер с авторски права: можете да го използвате, изучавате, споделяте и подобрявате по желание. По-конкретно можете да го разпространявате и/или променяте съгласно условията на Общия публичен лиценз на GNU, публикуван от Фондацията за свободен софтуер, версия 3 на лиценза или (по ваш избор) която и да е по-късна версия.</string>
+    <string name="app_license">NewPipe е софтуер с авторско право: Можете да го използвате, изучавате, споделяте и подобрявате по ваше желание. По-конкретно, можете да го разпространявате и/или променяте съгласно условията на Общия публичен лиценз на GNU, публикуван от Фондацията за свободен софтуер, или версия 3 на Лиценза, или (по ваш избор) всяка по-късна версия.</string>
     <string name="read_full_license">Прочетете лиценза</string>
     <string name="title_activity_history">История</string>
     <string name="action_history">История</string>
@@ -271,8 +270,8 @@
     <string name="resize_fill">Запълни</string>
     <string name="resize_zoom">Увеличи</string>
     <string name="caption_auto_generated">Авто-генерирани</string>
-    <string name="caption_setting_title">Надписи</string>
-    <string name="caption_setting_description">Модифицирай текстовия мащаб на надписите и стила на техния фон. За промените се изисква рестарт на приложението</string>
+    <string name="caption_setting_title">Субтитри</string>
+    <string name="caption_setting_description">Промяна на мащаба на текста на надписите на плейъра и стиловете на фона. Изисква се рестартиране на приложението, за да влезе в сила</string>
     <string name="enable_leak_canary_summary">Следенето за пропускане на памет може да направи приложението нестабилно</string>
     <string name="enable_disposed_exceptions_title">Докладвай за извънредни грешки</string>
     <string name="import_title">Внасяне</string>
@@ -320,7 +319,7 @@
     <string name="show_comments_summary">Изключете за скриване на коментарите</string>
     <string name="autoplay_title">Автоматично пускане</string>
     <string name="tab_choose">Избор на раздел</string>
-    <string name="settings_category_updates_title">Промени</string>
+    <string name="settings_category_updates_title">Актуализации</string>
     <string name="enable_playback_resume_title">Възобнови възпроизвеждането</string>
     <string name="settings_category_clear_data_title">Изтрии данни</string>
     <string name="search_showing_result_for">Показване на резултати за: %s</string>
@@ -356,7 +355,7 @@
     <string name="local_search_suggestions">Местни предложения за търсене</string>
     <string name="error_report_open_github_notice">Моля проверете дали има създадена дискусия за срив като този. Постъпилите дубликати са в ущърб на така ценното време за разработка.</string>
     <string name="show_meta_info_title">Покажи мета данни</string>
-    <string name="grid">Мрежа</string>
+    <string name="grid">Решетка</string>
     <string name="list">Списък</string>
     <string name="notification_action_3_title">Четвърто действие</string>
     <string name="seek_duration_title">Стъпка на превъртане</string>
@@ -370,7 +369,7 @@
     <string name="auto">Автоматично</string>
     <string name="show_description_summary">Изключете за скриване на описанията под видеата и допълнителната информация</string>
     <string name="wifi_only">Само при Wi-Fi</string>
-    <string name="list_view_mode">Вид на списъка</string>
+    <string name="list_view_mode">Режим на списъчен изглед</string>
     <string name="enable_playback_resume_summary">Възстанови последната позиция</string>
     <string name="app_update_available_notification_title">Нова версия на NewPipe е налична!</string>
     <string name="seekbar_preview_thumbnail_title">Миниатюри на лентата за превъртане</string>
@@ -420,8 +419,8 @@
     <string name="metadata_privacy">Поверителност</string>
     <string name="metadata_language">Език</string>
     <string name="metadata_privacy_internal">Вътрешен</string>
-    <string name="on">Включен</string>
-    <string name="off">Изключен</string>
+    <string name="on">Включено</string>
+    <string name="off">Изключено</string>
     <string name="open_website_license">Отвори уеб-страницата</string>
     <string name="detail_heart_img_view_description">Отбелязан със сърце от автора</string>
     <string name="conferences">Конференции</string>
@@ -518,7 +517,7 @@
     <string name="restricted_video">Това видео е с възрастова граница.
 \n
 \nВключете „%1$s“ в настройките ако искате да го пуснете.</string>
-    <string name="auto_device_theme_title">Автоматична (тази на устройството)</string>
+    <string name="auto_device_theme_title">Автоматична (тема на устройството)</string>
     <string name="notification_scale_to_square_image_summary">Мащабиране на миниатюрата в известието от 16:9 към 1:1 формат (възможни са изкривявания)</string>
     <string name="select_a_playlist">Избете плейлист</string>
     <string name="notifications">Известия</string>
@@ -581,8 +580,8 @@
     <string name="feed_load_error">Грешка при зареждане на емисия</string>
     <string name="feed_show_hide_streams">Покажи/Скрий потоци</string>
     <string name="private_content">Съдържанието е лично, затова не може да бъде възпроизведено или изтеглено от NewPipe.</string>
-    <string name="select_night_theme_toast">Можете да изберете любимата си тъмна тема по-долу</string>
-    <string name="tablet_mode_title">Режим таблет</string>
+    <string name="select_night_theme_toast">Можете да изберете любимата си нощна тема по-долу</string>
+    <string name="tablet_mode_title">Режим на таблет</string>
     <string name="metadata_subscribers">Абонати</string>
     <string name="selected_stream_external_player_not_supported">Избраният поток не се поддъжа от външни плеъри</string>
     <string name="settings_category_exoplayer_title">Настройки на ExoPlayer</string>
@@ -609,7 +608,7 @@
     <string name="settings_category_player_notification_title">Известие на плеъра</string>
     <string name="msg_failed_to_copy">Неуспешно копиране в клипборда</string>
     <string name="faq_title">Често задавани въпроси</string>
-    <string name="faq">Отвори уеб страницата</string>
+    <string name="faq">Преглед на уебсайта</string>
     <string name="title_activity_play_queue">Възпроизвеждане на опашка</string>
     <string name="leak_canary_not_available">LeakCanary не е открито</string>
     <string name="show_memory_leaks">Покажи къде изтича паметта</string>
@@ -630,7 +629,7 @@
     <string name="streams_notifications_interval_title">Честота на проверка</string>
     <string name="next_stream">Следващ поток</string>
     <string name="settings_category_feed_title">Емисия</string>
-    <string name="settings_category_backup_restore_title">Резервно копие и възстановяване</string>
+    <string name="settings_category_backup_restore_title">Архивиране и възстановяване</string>
     <string name="loading_metadata_title">Зареждане на метаданни…</string>
     <string name="restore_defaults_confirmation">Искате ли да възстановите настройките по подразбиране?</string>
     <string name="show_age_restricted_content_summary">Покажи съдържание, което вероятно е неподходящо за деца, защото има възрастово ограничение (например 18+)</string>
@@ -722,7 +721,7 @@
         <item quantity="other">%s нови потоци</item>
     </plurals>
     <string name="subtitle_activity_recaptcha">Натиснете „Готово“, когато решите</string>
-    <string name="faq_description">Ако имате проблеми с използването на приложението, не забравяйте да проверите тези отговори на често задавани въпроси!</string>
+    <string name="faq_description">Ако имате проблеми с използването на приложението, не забравяйте да разгледате тези отговори на често задавани въпроси!</string>
     <string name="main_page_content_swipe_remove">Плъзнете елементи, за да ги премахнете</string>
     <string name="default_kiosk_page_summary">Kiosk по подразбиране</string>
     <string name="enqueue_next_stream">Наредете следващия</string>
@@ -783,7 +782,7 @@
     <string name="hash_channel_description">Известия за напредъка на хеширането на видео</string>
     <string name="streams_notification_channel_name">Нови потоци</string>
     <string name="error_report_channel_name">Известие за доклад за грешка</string>
-    <string name="main_tabs_position_summary">Преместете основния селектор на раздели най-долу</string>
+    <string name="main_tabs_position_summary">Преместване на селектора на главни раздели надолу</string>
     <string name="error_report_notification_title">NewPipe откри грешка, докоснете, за да докладвате</string>
     <string name="no_streams">Няма потоци</string>
     <string name="disable_media_tunneling_title">Деактивиране на медийното тунелиране</string>
@@ -855,4 +854,6 @@
     <string name="api23_requirement_dialog_title">NewPipe спира поддръжката си за Android 5</string>
     <string name="api23_requirement_dialog_message">За съжаление NewPipe зависи от няколко библиотеки, които спряха поддръжката за Android 5.0 и 5.1. Следователно, за съжаление, следващата версия на NewPipe ще работи само на устройства с Android 6 или по-нова версия. Прочетете повече в публикацията в блога.</string>
     <string name="api23_requirement_dialog_blogpost">Публикация в блога</string>
+    <string name="channel_tab_podcasts">Подкасти</string>
+    <string name="channel_tab_courses">Курсове</string>
 </resources>

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+rootProject.name = "NewPipe"
 
 pluginManagement {
     repositories {
@@ -11,6 +12,7 @@ pluginManagement {
         mavenCentral()
     }
 }
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {

@@ -646,6 +646,14 @@ public final class Player implements PlaybackListener, Listener {
         simpleExoPlayer.setWakeMode(C.WAKE_MODE_NETWORK);
         simpleExoPlayer.setHandleAudioBecomingNoisy(true);
 
+        // Enable ExoPlayer automatic audio focus management
+        simpleExoPlayer.setAudioAttributes(
+            new com.google.android.exoplayer2.audio.AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .build(),
+            true);
+
         audioReactor = new AudioReactor(context, simpleExoPlayer);
 
         registerBroadcastReceiver();
@@ -1207,10 +1215,6 @@ public final class Player implements PlaybackListener, Listener {
         }
 
         UIs.call(PlayerUi::onPrepared);
-
-        if (playWhenReady && !isMuted()) {
-            audioReactor.requestAudioFocus();
-        }
     }
 
     private void onBlocked() {
@@ -1459,13 +1463,20 @@ public final class Player implements PlaybackListener, Listener {
     public void toggleMute() {
         final boolean wasMuted = isMuted();
         simpleExoPlayer.setVolume(wasMuted ? 1 : 0);
-        if (wasMuted) {
-            audioReactor.requestAudioFocus();
-        } else {
-            audioReactor.abandonAudioFocus();
-        }
+
+        // Update audio focus
+        // When wasMuted is true, we want to play sound, so ExoPlayer has to handle audio focus in
+        // this case; when wasMuted is false, we don't want to play sound, so no audio focus should
+        // be done
+        simpleExoPlayer.setAudioAttributes(
+                new com.google.android.exoplayer2.audio.AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                        .build(),
+                wasMuted);
         // Track volume change event
         recordVolumeChangeEvent();
+
         UIs.call(playerUi -> playerUi.onMuteUnmuteChanged(!wasMuted));
         notifyPlaybackUpdateToListeners();
     }
@@ -1913,10 +1924,6 @@ public final class Player implements PlaybackListener, Listener {
             return;
         }
 
-        if (!isMuted()) {
-            audioReactor.requestAudioFocus();
-        }
-
         if (currentState == STATE_COMPLETED) {
             if (playQueue.getIndex() == 0) {
                 seekToDefault();
@@ -1928,7 +1935,6 @@ public final class Player implements PlaybackListener, Listener {
         if (isStopped()) {
             // Some phones suspend a paused player after 10 minutes. This causes the player to
             // enter STATE_IDLE, causing playback to fail. So we try to recover from that here.
-            setRecovery();
             reloadPlayQueueManager();
         }
 
@@ -1944,7 +1950,6 @@ public final class Player implements PlaybackListener, Listener {
             return;
         }
 
-        audioReactor.abandonAudioFocus();
         simpleExoPlayer.pause();
         saveStreamProgressState();
     }
@@ -2047,7 +2052,7 @@ public final class Player implements PlaybackListener, Listener {
                     .observeOn(AndroidSchedulers.mainThread())
                     .doOnError(e -> {
                         if (DEBUG) {
-                            e.printStackTrace();
+                            Log.e(TAG, "Failed to save stream progress state", e);
                         }
                     })
                     .onErrorComplete()
