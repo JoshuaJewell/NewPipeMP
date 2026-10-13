@@ -5,6 +5,7 @@
 package org.schabi.newpipe.adaptive
 
 import org.schabi.newpipe.database.AppDatabase
+import org.schabi.newpipe.database.adaptive.AdaptiveShuffleFeatureQueriesDAO
 import org.schabi.newpipe.database.adaptive.AdaptiveShuffleModelStateEntity
 import org.schabi.newpipe.database.adaptive.AdaptiveShufflePendingEventEntity
 
@@ -18,21 +19,41 @@ class AdaptiveShuffleRepository(database: AppDatabase) : AdaptiveShuffleStore {
     private val playbackStatsDao = database.playbackStatisticsDAO()
     private val featureQueriesDao = database.adaptiveShuffleFeatureQueriesDAO()
 
-    data class UploaderStats(
-        val avgRating: Double?,
-        val completionRate: Double?,
-        val skipRate: Double?
+    // Empty-uploader strings are common in the streams table; treat them as missing.
+    private val uploaderStats = UploaderStatsCache(fetch = { names ->
+        featureQueriesDao.uploaderAggregatesBlocking(names).associate { row ->
+            row.uploader to UploaderStats.of(row.avgRating, row.completions, row.skips)
+        }
+    })
+
+    fun getUploaderStats(uploader: String?): UploaderStats = uploaderStats.get(uploader)
+
+    fun getUploaderStats(uploaders: Collection<String>): Map<String, UploaderStats> = uploaderStats.get(uploaders)
+
+    // Everything a pick needs about its candidates, in one query per kind instead of one
+    // per candidate.
+    class CandidateFacts(
+        val statistics: Map<Long, AdaptiveShuffleFeatureQueriesDAO.StatisticsRow>,
+        val lastAccessMillis: Map<Long, Long>,
+        val coMembership: Map<Long, Int>,
+        val offline: Set<Long>
     )
 
-    // Empty-uploader strings are common in the streams table; treat them as missing.
-    fun getUploaderStats(uploader: String?): UploaderStats {
-        if (uploader.isNullOrBlank()) return UploaderStats(null, null, null)
-        val avg = featureQueriesDao.averageRatingForUploaderBlocking(uploader)
-        val agg = featureQueriesDao.aggregateForUploaderBlocking(uploader)
-        val total = agg.completions + agg.skips
-        val completionRate = if (total > 0) agg.completions.toDouble() / total else null
-        val skipRate = if (total > 0) agg.skips.toDouble() / total else null
-        return UploaderStats(avg, completionRate, skipRate)
+    fun candidateFacts(streamIds: List<Long>, previousStreamId: Long?): CandidateFacts {
+        if (streamIds.isEmpty()) return CandidateFacts(emptyMap(), emptyMap(), emptyMap(), emptySet())
+        val coMembership = if (previousStreamId != null && previousStreamId > 0L) {
+            featureQueriesDao.coMembershipCountsBlocking(previousStreamId, streamIds)
+                .filter { it.streamId != previousStreamId }
+                .associate { it.streamId to it.count }
+        } else {
+            emptyMap()
+        }
+        return CandidateFacts(
+            statistics = featureQueriesDao.statisticsBlocking(streamIds).associateBy { it.streamId },
+            lastAccessMillis = featureQueriesDao.lastAccessBlocking(streamIds).associate { it.streamId to it.lastAccessMillis },
+            coMembership = coMembership,
+            offline = featureQueriesDao.offlineAvailableBlocking(streamIds).toHashSet()
+        )
     }
 
     fun playlistCoMembershipCount(streamIdA: Long, streamIdB: Long): Int = if (streamIdA <= 0L || streamIdB <= 0L) {
@@ -43,7 +64,7 @@ class AdaptiveShuffleRepository(database: AppDatabase) : AdaptiveShuffleStore {
 
     fun isDownloadedOffline(streamId: Long): Boolean = streamId > 0L && featureQueriesDao.isDownloadedOfflineBlocking(streamId)
 
-    fun getStreamForUrl(serviceId: Int, url: String): org.schabi.newpipe.database.stream.model.StreamEntity? = streamDao.getStream(serviceId.toLong(), url).blockingFirst(emptyList()).firstOrNull()
+    fun getStreamForUrl(serviceId: Int, url: String): org.schabi.newpipe.database.stream.model.StreamEntity? = featureQueriesDao.streamBlocking(serviceId, url)
 
     fun getOrCreateStream(item: org.schabi.newpipe.player.playqueue.PlayQueueItem): org.schabi.newpipe.database.stream.model.StreamEntity? {
         getStreamForUrl(item.serviceId, item.url)?.let { return it }

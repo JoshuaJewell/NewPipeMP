@@ -449,6 +449,8 @@ Edge cases in playback and statistics, found by tracing the player rather than t
 
 The pure parts (`ListenJudge`, `PlaybackFailurePolicy`, `ShuffleSession`, the engine changes) are unit tested; the integration type-checks against stubs of the queue types. The `Player.java` glue passes checkstyle and a syntax check but has not been compiled: there is still no Android SDK in the sandbox.
 
+Pick cost. A pick ran about six queries per candidate, thirty candidates a pick, and the two uploader queries each scanned the whole `streams` table (no index on `uploader`), up to sixty scans a pick. Candidate facts are now fetched in one batched query per kind (`AdaptiveShuffleFeatureQueriesDAO`), uploader aggregates in one grouped query and cached for ten minutes (`UploaderStatsCache`), and stream rows by a plain blocking lookup instead of a Room `Flowable`. No schema change; an index on `streams.uploader` would help further but needs a migration, so it waits for the v1.1 merge.
+
 Not done: the v1.1 features (§4) are still unpushed and are not in this branch; the audio pipeline (§8) is untouched.
 
 ## 11. Brief for Claude Code

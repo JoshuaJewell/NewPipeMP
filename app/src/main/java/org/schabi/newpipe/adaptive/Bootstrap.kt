@@ -31,7 +31,7 @@ object Bootstrap {
         val freshScaler = FeatureScaler(FeatureSchema.scaledIndices)
         val now = OffsetDateTime.now()
         var ingested = 0L
-        val uploaderCache = HashMap<String, AdaptiveShuffleRepository.UploaderStats>()
+        val uploaderCache = HashMap<String, UploaderStats>()
 
         for (stream in streams) {
             val stats = repository.getPlaybackStatistics(stream.uid) ?: continue
@@ -52,7 +52,7 @@ object Bootstrap {
             val context = synthesisedContext(lastHistory?.accessDate ?: now)
             val uploaderStats = stream.uploader?.takeIf { it.isNotBlank() }?.let { name ->
                 uploaderCache.getOrPut(name) { repository.getUploaderStats(name) }
-            } ?: AdaptiveShuffleRepository.UploaderStats(null, null, null)
+            } ?: UploaderStats.UNKNOWN
             val offline = repository.isDownloadedOffline(stream.uid)
             // Outcome counts withheld: see the class comment.
             val item = synthesisedItem(
@@ -100,7 +100,7 @@ object Bootstrap {
         plays: Int,
         lastAccess: OffsetDateTime?,
         now: OffsetDateTime,
-        uploaderStats: AdaptiveShuffleRepository.UploaderStats,
+        uploaderStats: UploaderStats,
         offline: Boolean
     ): CandidateItem {
         val daysSince: Double? = lastAccess?.let { ad ->

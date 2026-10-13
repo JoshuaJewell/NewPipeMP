@@ -4,14 +4,13 @@
  */
 package org.schabi.newpipe.adaptive
 
-import java.time.OffsetDateTime
 import org.schabi.newpipe.extractor.stream.StreamType
 import org.schabi.newpipe.player.playqueue.PlayQueueItem
 
-// Translates a play-queue item into the engine's CandidateItem by reading lifetime
-// statistics from the database. Blocks the calling thread; intended for use from
-// Schedulers.io. Uploader aggregates are cached per call so that 30 candidates from
-// the same artist trigger one set of queries rather than thirty.
+// Translates play-queue items into the engine's CandidateItems by reading lifetime
+// statistics from the database. Blocks the calling thread; runs on the adaptive shuffle
+// thread. One row lookup per candidate, then one batched query per kind of fact, and
+// uploader aggregates from a short-lived cache.
 class CandidateMaterialiser(private val repository: AdaptiveShuffleRepository) {
 
     fun materialise(
@@ -27,40 +26,28 @@ class CandidateMaterialiser(private val repository: AdaptiveShuffleRepository) {
         items: List<PlayQueueItem>,
         previousStreamId: Long? = null
     ): List<Pair<PlayQueueItem, CandidateItem>> {
-        val now = OffsetDateTime.now()
-        val uploaderCache = HashMap<String, AdaptiveShuffleRepository.UploaderStats>()
-        val out = ArrayList<Pair<PlayQueueItem, CandidateItem>>(items.size)
-        for (item in items) {
-            val stream = repository.getOrCreateStream(item) ?: continue
+        val streams = items.mapNotNull { item -> repository.getOrCreateStream(item)?.let { item to it } }
+        if (streams.isEmpty()) return emptyList()
+        val ids = streams.map { it.second.uid }
+        val facts = repository.candidateFacts(ids, previousStreamId)
+        val uploaders = repository.getUploaderStats(streams.mapNotNull { it.second.uploader })
+        val nowMillis = System.currentTimeMillis()
+
+        return streams.map { (item, stream) ->
             val streamId = stream.uid
-            val stats = repository.getPlaybackStatistics(streamId)
-            val lastHistory = repository.getLatestHistoryEntry(streamId)
-            val daysSince: Double? = lastHistory?.accessDate?.let { ad ->
-                val seconds = java.time.Duration.between(ad, now).seconds.coerceAtLeast(0L)
-                seconds.toDouble() / 86_400.0
+            val stats = facts.statistics[streamId]
+            val skipCount = stats?.skips ?: 0
+            val completionCount = stats?.completions ?: 0
+            val playCount = stats?.plays ?: 0
+            val daysSince = facts.lastAccessMillis[streamId]?.let { at ->
+                (nowMillis - at).coerceAtLeast(0L) / 86_400_000.0
             }
-            val skipCount = stats?.skipCount ?: 0
-            val completionCount = stats?.completionCount ?: 0
-            val playCount = stats?.playCount ?: 0
-            val effectivePlays = maxOf(playCount, skipCount + completionCount)
-
-            val uploaderStats = stream.uploader?.takeIf { it.isNotBlank() }?.let { name ->
-                uploaderCache.getOrPut(name) { repository.getUploaderStats(name) }
-            } ?: AdaptiveShuffleRepository.UploaderStats(null, null, null)
-
-            val coMembership = if (previousStreamId != null && previousStreamId != streamId) {
-                repository.playlistCoMembershipCount(previousStreamId, streamId)
-            } else {
-                0
-            }
-
-            val offline = repository.isDownloadedOffline(streamId)
-
-            out += item to CandidateItem(
+            val uploaderStats = stream.uploader?.let { uploaders[it] } ?: UploaderStats.UNKNOWN
+            item to CandidateItem(
                 streamId = streamId,
                 durationSeconds = stream.duration,
                 userRating = stream.userRating,
-                lifetimePlayCount = effectivePlays,
+                lifetimePlayCount = maxOf(playCount, skipCount + completionCount),
                 lifetimeEarlySkips = skipCount,
                 lifetimeCompletions = completionCount,
                 daysSinceLastAccess = daysSince,
@@ -69,11 +56,10 @@ class CandidateMaterialiser(private val repository: AdaptiveShuffleRepository) {
                 uploaderAvgRating = uploaderStats.avgRating,
                 uploaderCompletionRate = uploaderStats.completionRate,
                 uploaderSkipRate = uploaderStats.skipRate,
-                playlistCoMembershipWithPrev = coMembership,
-                isDownloadedOffline = offline
+                playlistCoMembershipWithPrev = if (streamId == previousStreamId) 0 else facts.coMembership[streamId] ?: 0,
+                isDownloadedOffline = streamId in facts.offline
             )
         }
-        return out
     }
 
     private fun mapStreamType(t: StreamType): StreamTypeFeature = when (t) {
