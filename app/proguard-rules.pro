@@ -57,3 +57,11 @@
 
 # See https://github.com/TeamNewPipe/NewPipe/issues/13508
 -keep class org.ocpsoft.prettytime.i18n.Resources* { *; }
+
+## jaudiotagger (audio tag reading for offline files)
+# Artwork decoding references desktop imaging classes that Android does not have; the
+# code paths using them are never reached on Android.
+-dontwarn java.awt.**
+-dontwarn javax.imageio.**
+# Frame bodies and other tag classes are instantiated by name via reflection.
+-keep class org.jaudiotagger.** { *; }
