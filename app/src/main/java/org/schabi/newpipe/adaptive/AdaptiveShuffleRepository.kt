@@ -120,8 +120,7 @@ class AdaptiveShuffleRepository(database: AppDatabase) : AdaptiveShuffleStore {
 
     override fun getPendingById(id: Long): AdaptiveShufflePendingEventEntity? = pendingDao.getByIdBlocking(id)
 
-    override fun findLatestUnresolvedForStream(streamId: Long): Long? =
-        pendingDao.findLatestUnresolvedForStream(streamId).blockingGet()
+    override fun findLatestUnresolvedForStream(streamId: Long): Long? = pendingDao.findLatestUnresolvedForStream(streamId).blockingGet()
 
     override fun resolvePending(id: Long, reward: Double, rawInputsBlob: ByteArray, resolvedAt: Long) {
         pendingDao.resolveWithInputs(id, reward, rawInputsBlob, resolvedAt)
@@ -137,11 +136,9 @@ class AdaptiveShuffleRepository(database: AppDatabase) : AdaptiveShuffleStore {
 
     override fun getRecent(limit: Int): List<AdaptiveShufflePendingEventEntity> = pendingDao.getRecentBlocking(limit)
 
-    override fun getRecentResolved(limit: Int): List<AdaptiveShufflePendingEventEntity> =
-        pendingDao.getRecentResolvedBlocking(limit)
+    override fun getRecentResolved(limit: Int): List<AdaptiveShufflePendingEventEntity> = pendingDao.getRecentResolvedBlocking(limit)
 
-    override fun getAllResolvedOrdered(): List<AdaptiveShufflePendingEventEntity> =
-        pendingDao.getAllResolvedOrderedBlocking()
+    override fun getAllResolvedOrdered(): List<AdaptiveShufflePendingEventEntity> = pendingDao.getAllResolvedOrderedBlocking()
 
     fun clearAll() {
         pendingDao.deleteAll()

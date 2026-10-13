@@ -27,9 +27,12 @@ class RepetitionMetricsTest {
     @Test fun `sessions split on long gaps`() {
         // Three sessions two hours apart; track 1 appears in two of them.
         val served = listOf(
-            RepetitionMetrics.Served(0, 1, "A"), RepetitionMetrics.Served(60_000, 2, "B"),
-            RepetitionMetrics.Served(2 * hour, 3, "C"), RepetitionMetrics.Served(2 * hour + 60_000, 4, "D"),
-            RepetitionMetrics.Served(4 * hour, 1, "A"), RepetitionMetrics.Served(4 * hour + 60_000, 5, "E")
+            RepetitionMetrics.Served(0, 1, "A"),
+            RepetitionMetrics.Served(60_000, 2, "B"),
+            RepetitionMetrics.Served(2 * hour, 3, "C"),
+            RepetitionMetrics.Served(2 * hour + 60_000, 4, "D"),
+            RepetitionMetrics.Served(4 * hour, 1, "A"),
+            RepetitionMetrics.Served(4 * hour + 60_000, 5, "E")
         )
         val r = RepetitionMetrics.compute(served, sessionGapMillis = 30L * 60L * 1000L)
         assertEquals(3, r.sessionsConsidered)

@@ -14,8 +14,7 @@ import org.junit.Test
 
 class AdaptiveShuffleEngineTest {
 
-    private fun engine(store: InMemoryStore = InMemoryStore(), clock: FakeClock = FakeClock()) =
-        AdaptiveShuffleEngine(store, clock, Random(7), discount = 1.0)
+    private fun engine(store: InMemoryStore = InMemoryStore(), clock: FakeClock = FakeClock()) = AdaptiveShuffleEngine(store, clock, Random(7), discount = 1.0)
 
     private fun decideAndResolve(e: AdaptiveShuffleEngine, item: CandidateItem, ratio: Double) {
         e.chooseNext(listOf(item), fixtureContext())

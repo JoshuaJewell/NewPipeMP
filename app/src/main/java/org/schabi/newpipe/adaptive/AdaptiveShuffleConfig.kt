@@ -40,6 +40,7 @@ object AdaptiveShuffleConfig {
 
     // Candidate selection (spec sections 6.2 and 9.2).
     const val CANDIDATE_SAMPLE_CAP: Int = 30
+
     // Recency window: a played track is ineligible for this many subsequent picks. It
     // scales with the queue so a large library rotates widely: a quarter of the tail,
     // never fewer than MIN nor more than MAX. With ~1500 tracks that is 375 picks, about

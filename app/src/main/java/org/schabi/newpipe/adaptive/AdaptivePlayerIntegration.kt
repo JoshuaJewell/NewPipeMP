@@ -293,11 +293,14 @@ class AdaptivePlayerIntegration(
         @JvmStatic
         fun originOf(queue: PlayQueue): QueueOrigin = when (queue) {
             is PlaylistPlayQueue -> QueueOrigin.PLAYLIST
+
             is ChannelTabPlayQueue -> QueueOrigin.CHANNEL
+
             is SinglePlayQueue -> {
                 val userChosen = queue.streams.count { !it.isAutoQueued }
                 if (userChosen > 1) QueueOrigin.PLAYLIST else QueueOrigin.SINGLE
             }
+
             else -> QueueOrigin.OTHER
         }
     }

@@ -26,19 +26,18 @@ object OutcomeRecovery {
     private val rewardPattern = Regex("\"reward\":(-?[0-9.eE+-]+)")
 
     // Tolerant line parser: anything that is not a well-formed resolution line is skipped.
-    fun parseResolutions(lines: Sequence<String>): List<TelemetryResolution> =
-        lines.mapNotNull { line ->
-            if (!line.contains("\"event\":\"resolution\"")) return@mapNotNull null
-            val id = streamIdPattern.find(line)?.groupValues?.get(1)?.toLongOrNull()
-            val ts = timestampPattern.find(line)?.groupValues?.get(1)?.toLongOrNull()
-            val ratio = ratioPattern.find(line)?.groupValues?.get(1)?.toDoubleOrNull()
-            val reward = rewardPattern.find(line)?.groupValues?.get(1)?.toDoubleOrNull()
-            if (id == null || ts == null || ratio == null || reward == null || ratio.isNaN()) {
-                null
-            } else {
-                TelemetryResolution(id, ts, ratio, reward)
-            }
-        }.toList()
+    fun parseResolutions(lines: Sequence<String>): List<TelemetryResolution> = lines.mapNotNull { line ->
+        if (!line.contains("\"event\":\"resolution\"")) return@mapNotNull null
+        val id = streamIdPattern.find(line)?.groupValues?.get(1)?.toLongOrNull()
+        val ts = timestampPattern.find(line)?.groupValues?.get(1)?.toLongOrNull()
+        val ratio = ratioPattern.find(line)?.groupValues?.get(1)?.toDoubleOrNull()
+        val reward = rewardPattern.find(line)?.groupValues?.get(1)?.toDoubleOrNull()
+        if (id == null || ts == null || ratio == null || reward == null || ratio.isNaN()) {
+            null
+        } else {
+            TelemetryResolution(id, ts, ratio, reward)
+        }
+    }.toList()
 
     class Index(resolutions: List<TelemetryResolution>) {
         private val byStream: Map<Long, List<TelemetryResolution>> =

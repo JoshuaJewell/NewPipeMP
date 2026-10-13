@@ -11,8 +11,7 @@ import org.junit.Test
 
 class CandidateFilterTest {
 
-    private fun tail(n: Int, uploaderOf: (Int) -> String? = { "U$it" }) =
-        (0 until n).map { CandidateFilter.TailEntry(it, "k$it", uploaderOf(it)) }
+    private fun tail(n: Int, uploaderOf: (Int) -> String? = { "U$it" }) = (0 until n).map { CandidateFilter.TailEntry(it, "k$it", uploaderOf(it)) }
 
     @Test fun `recently played tracks are excluded`() {
         val r = CandidateFilter.filter(tail(50), listOf("k1", "k2", "k3"), emptyList(), recencyWindow = 40, minEligible = 20)

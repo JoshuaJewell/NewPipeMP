@@ -31,9 +31,8 @@ object RewardCalculator {
     }
 
     // The v1 step reward. Used only to decode historical rewards.
-    fun legacyStepReward(completionRatio: Double, restartCountDelta: Int): Double =
-        legacyStepBase(completionRatio) +
-            AdaptiveShuffleConfig.REWARD_REWIND_DENSITY * rewindDensity(restartCountDelta)
+    fun legacyStepReward(completionRatio: Double, restartCountDelta: Int): Double = legacyStepBase(completionRatio) +
+        AdaptiveShuffleConfig.REWARD_REWIND_DENSITY * rewindDensity(restartCountDelta)
 
     // Inverts the v1 step reward: given the stored reward and the completion ratio it was
     // computed from, recover the (capped) restart delta.
@@ -49,6 +48,5 @@ object RewardCalculator {
         else -> AdaptiveShuffleConfig.LEGACY_REWARD_MID_SKIP
     }
 
-    private fun rewindDensity(restartCountDelta: Int): Double =
-        min(AdaptiveShuffleConfig.REWIND_CAP, restartCountDelta.toDouble().coerceAtLeast(0.0))
+    private fun rewindDensity(restartCountDelta: Int): Double = min(AdaptiveShuffleConfig.REWIND_CAP, restartCountDelta.toDouble().coerceAtLeast(0.0))
 }

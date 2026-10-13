@@ -88,6 +88,7 @@ class AdaptiveShuffleEngine(
             val greedyIdx = scores.indices.maxByOrNull { scores[it].predictedReward } ?: 0
             val chosenIdx = when (mode) {
                 SelectionMode.UCB -> scores.indices.maxByOrNull { scores[it].total } ?: 0
+
                 SelectionMode.THOMPSON -> {
                     val theta = linucb.sampleTheta(rng)
                     scaledVectors.indices.maxByOrNull { LinUCB.dot(theta, scaledVectors[it]) } ?: 0

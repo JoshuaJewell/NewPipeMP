@@ -62,8 +62,7 @@ internal class InMemoryStore : AdaptiveShuffleStore {
         return id
     }
     override fun getPendingById(id: Long) = events[id]
-    override fun findLatestUnresolvedForStream(streamId: Long): Long? =
-        events.values.filter { it.streamId == streamId && !it.resolved }.maxByOrNull { it.chosenAt }?.id
+    override fun findLatestUnresolvedForStream(streamId: Long): Long? = events.values.filter { it.streamId == streamId && !it.resolved }.maxByOrNull { it.chosenAt }?.id
     override fun resolvePending(id: Long, reward: Double, rawInputsBlob: ByteArray, resolvedAt: Long) {
         val e = events[id] ?: return
         e.resolved = true
@@ -78,8 +77,7 @@ internal class InMemoryStore : AdaptiveShuffleStore {
         events.remove(id)
     }
     override fun getRecent(limit: Int) = events.values.sortedByDescending { it.chosenAt }.take(limit)
-    override fun getRecentResolved(limit: Int) =
-        events.values.filter { it.resolved }.sortedByDescending { it.chosenAt }.take(limit)
+    override fun getRecentResolved(limit: Int) = events.values.filter { it.resolved }.sortedByDescending { it.chosenAt }.take(limit)
     override fun getAllResolvedOrdered() = events.values.filter { it.resolved }.sortedBy { it.chosenAt }
     override fun getStreamTitle(streamId: Long): String? = "track $streamId"
 }

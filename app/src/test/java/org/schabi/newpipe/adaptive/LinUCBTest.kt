@@ -78,8 +78,14 @@ class LinUCBTest {
         val x = doubleArrayOf(1.0, 1.0)
         val forgetful = LinUCB(dimension = 2, discount = 0.95)
         val stubborn = LinUCB(dimension = 2, discount = 1.0)
-        repeat(300) { forgetful.update(x, 1.0); stubborn.update(x, 1.0) }
-        repeat(60) { forgetful.update(x, -1.0); stubborn.update(x, -1.0) }
+        repeat(300) {
+            forgetful.update(x, 1.0)
+            stubborn.update(x, 1.0)
+        }
+        repeat(60) {
+            forgetful.update(x, -1.0)
+            stubborn.update(x, -1.0)
+        }
         val pf = forgetful.score(x).predictedReward
         val ps = stubborn.score(x).predictedReward
         assertTrue("discounted model should have moved to the new taste ($pf)", pf < -0.5)
