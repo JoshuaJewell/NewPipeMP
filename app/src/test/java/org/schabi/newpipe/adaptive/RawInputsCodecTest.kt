@@ -161,6 +161,14 @@ class RawInputsCodecTest {
         assertEquals(richItem.copy(listenEvents = ListenEventCounts.NONE), decoded.item)
     }
 
+    // The v1.1 build wrote route 2 for most of its decisions, made mostly over Bluetooth.
+    @Test fun `v1 point 1 route value 2 reads as bluetooth`() {
+        val bytes = legacy(5)
+        val routeOffset = bytes.size - (6 * 4 + 4 + 8 + 8 + 2)
+        bytes[routeOffset] = 2
+        assertEquals(OutputRoute.BLUETOOTH, RawInputsCodec.decode(bytes).context.outputRoute)
+    }
+
     @Test fun `attaching an outcome upgrades a legacy blob to the current version`() {
         val outcome = RawInputsCodec.Outcome(1.0, 0)
         val upgraded = RawInputsCodec.withOutcome(legacy(6, extra = 154), outcome)

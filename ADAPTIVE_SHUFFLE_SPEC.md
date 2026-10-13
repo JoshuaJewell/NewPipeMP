@@ -394,7 +394,7 @@ Validation:
 
 ## 9. Decisions for Joshua
 
-1. ~~Push the on-device branch (§0).~~ Moot: its source is lost. One thing only it could have settled: the order of its output-route values (§10).
+1. ~~Push the on-device branch (§0).~~ Moot: its source is lost. The order of its output-route values was settled from how it was used (§10).
 2. Candidate scope: keep the sample of 30 from the queue tail, score the whole tail, or score the whole library (§2.2).
 3. Recency window N (default 40) and whether it should scale with library size.
 4. Whether any absolute artist-affinity term returns after the §8 experiment.
@@ -458,7 +458,7 @@ Database version 19 and the v1.1 rebuild (§0, §4):
 - **Features, schema v5** (37). Context: `screen_on`, and `route_bluetooth`, `route_wired`, `route_other` against the phone speaker as baseline (`ListeningConditionsReader`: wired or USB headset first, then Bluetooth, then HDMI, dock, line or USB device). Item: six per-listen rates, `ln(1 + count / listens)`, standardised, over the listens whose leave point was recorded (the count all of them were collected alongside), plus `mean_leave_point` and `leave_point_spread` (sample standard deviation). All are neutral below three recorded listens. The debug descriptions say what is counted, not what it means (§4's note on forward seeks).
 - **Rating scale.** Ratings are stored 1 to 10 (half stars); `user_rating_norm` assumed 1 to 5, so a full rating encoded as 3.5 and `rating_vs_uploader` was clipped. Both now span −1 to 1. The schema hash changes, so the model rebuilds on first launch.
 - **The v1.1 decision log.** Its blobs are versions 4, 5 and 6: the v2 body, then route (byte), screen on (byte), and in 5 and 6 the six counts (backward seeks, forward seeks, volume up, volume down, pauses resumed, pauses skipped), the leave count, mean and M2, then in 6 a 154-byte block (audio features, never filled). The count order was fixed by matching each stream's latest blob against its current counters: one order matches exactly for 335 of 466 streams and never exceeds them for 435, well ahead of any other. This branch reads all three and writes version 7 (the v2 body, that block, the v3 trailer), numbered past them. Its rewards are this branch's `fromRatio`, so for the 518 events with its `completion_ratio` column the restart delta follows from the reward and the full outcome is recovered and folded into the blob. On the exported log, 1,846 of 1,917 events decode (the 71 that do not are version 1, never supported), and a rebuild ingests 1,306 of 1,339 resolved events, against at most 107 before. Each decision's candidates are stored again in `candidate_stream_ids_blob`, in the v1.1 form.
-- **Inferred, not known:** the order of the v1.1 build's route values. It wrote only 0 and 2 (2 for 1,547 of its 1,739 decisions); this branch reads them in the order §4 lists the routes, so 2 is wired. If most of that listening was over Bluetooth, swap `BLUETOOTH` and `WIRED` in `OutputRoute` before new decisions are logged.
+- **Inferred:** the order of the v1.1 build's route values. It wrote only 0 and 2 (2 for 1,547 of its 1,739 decisions), and that listening was mostly over Bluetooth (Joshua), so `OutputRoute` is speaker, wired, Bluetooth, other: 2 is Bluetooth.
 
 Not done: the audio pipeline (§8) is untouched; the v1.1 build's `stream_audio_features` table is created but unused.
 

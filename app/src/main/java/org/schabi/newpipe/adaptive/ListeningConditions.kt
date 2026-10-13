@@ -15,6 +15,6 @@ data class ListeningConditions(val screenOn: Boolean, val outputRoute: OutputRou
 }
 
 // Ordinals are persisted by RawInputsCodec; append new values, never reorder. The v1.1
-// build's blobs are read with the same ordinals. Its order is inferred, not known: it
-// wrote only 0 and 2, and this is the order its spec lists the routes in.
-enum class OutputRoute { SPEAKER, BLUETOOTH, WIRED, OTHER }
+// build's blobs are read with the same ordinals. Its order is inferred: it wrote only 0
+// and 2, 2 for most decisions, and that listening was mostly over Bluetooth.
+enum class OutputRoute { SPEAKER, WIRED, BLUETOOTH, OTHER }
