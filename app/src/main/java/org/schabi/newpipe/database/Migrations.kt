@@ -35,6 +35,12 @@ object Migrations {
     const val DB_VER_13 = 13
     const val DB_VER_14 = 14
 
+    // Versions 15 to 18 exist only in an on-device build whose source is not in this
+    // repository. Version 19 lets this build open a database exported from it; see
+    // MIGRATION_18_19.
+    const val DB_VER_18 = 18
+    const val DB_VER_19 = 19
+
     private val TAG = Migrations::class.java.getName()
     private val isDebug = MainActivity.DEBUG
 
@@ -482,4 +488,59 @@ object Migrations {
             Log.d(TAG, "Finished migrating database from v13 to v14")
         }
     }
+
+    // Brings a version 14 database to the schema the on-device build reached at
+    // version 18 (read from a database it exported), in one step.
+    val MIGRATION_14_19 = Migration(DB_VER_14, DB_VER_19) { db ->
+        if (isDebug) {
+            Log.d(TAG, "Start migrating database from v14 to v19")
+        }
+
+        for (column in listOf(
+            "forward_seek_count",
+            "backward_seek_count",
+            "volume_up_count",
+            "volume_down_count",
+            "pause_resume_count",
+            "pause_skip_count",
+            "dropout_count"
+        )) {
+            db.execSQL(
+                "ALTER TABLE playback_statistics ADD COLUMN $column INTEGER NOT NULL DEFAULT 0"
+            )
+        }
+        for (column in listOf("dropout_mean", "dropout_m2")) {
+            db.execSQL(
+                "ALTER TABLE playback_statistics ADD COLUMN $column REAL NOT NULL DEFAULT 0.0"
+            )
+        }
+
+        db.execSQL(
+            "ALTER TABLE adaptive_shuffle_pending_events ADD COLUMN candidate_stream_ids_blob BLOB"
+        )
+        db.execSQL("ALTER TABLE adaptive_shuffle_pending_events ADD COLUMN completion_ratio REAL")
+
+        // Not used by this build; created so the schema matches the on-device build's.
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `stream_audio_features` " +
+                "(`stream_id` INTEGER NOT NULL, `tempo_bpm` REAL, `tempo_confidence` REAL, " +
+                "`key_pitch_class` INTEGER, `mode` INTEGER, `spectral_centroid_mean` REAL, " +
+                "`spectral_centroid_std` REAL, `rms_energy_mean` REAL, `rms_energy_std` REAL, " +
+                "`zero_crossing_mean` REAL, `mfcc_means_blob` BLOB, `mfcc_stds_blob` BLOB, " +
+                "`analysis_window` TEXT NOT NULL, `extractor_version` INTEGER NOT NULL, " +
+                "`extracted_at` INTEGER NOT NULL, PRIMARY KEY(`stream_id`), " +
+                "FOREIGN KEY(`stream_id`) REFERENCES `streams`(`uid`) " +
+                "ON UPDATE CASCADE ON DELETE CASCADE)"
+        )
+
+        if (isDebug) {
+            Log.d(TAG, "Finished migrating database from v14 to v19")
+        }
+    }
+
+    // A version 18 database already has the version 19 schema. Room only checks a
+    // database's identity hash when its version equals the app's, and this build cannot
+    // reproduce the on-device build's hash, so it opens version 18 through this no-op
+    // step, after which Room validates every table against this build's entities.
+    val MIGRATION_18_19 = Migration(DB_VER_18, DB_VER_19) { _ -> }
 }

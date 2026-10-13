@@ -87,7 +87,36 @@ data class PlaybackStatisticsEntity(
      * Timestamp of last update to these statistics.
      */
     @ColumnInfo(name = LAST_UPDATED)
-    var lastUpdated: OffsetDateTime = OffsetDateTime.now()
+    var lastUpdated: OffsetDateTime = OffsetDateTime.now(),
+
+    // The columns below come from the on-device build's schema (version 18). This build
+    // does not record them; they are declared so Room accepts that schema.
+    @ColumnInfo(name = FORWARD_SEEK_COUNT)
+    var forwardSeekCount: Int = 0,
+
+    @ColumnInfo(name = BACKWARD_SEEK_COUNT)
+    var backwardSeekCount: Int = 0,
+
+    @ColumnInfo(name = VOLUME_UP_COUNT)
+    var volumeUpCount: Int = 0,
+
+    @ColumnInfo(name = VOLUME_DOWN_COUNT)
+    var volumeDownCount: Int = 0,
+
+    @ColumnInfo(name = PAUSE_RESUME_COUNT)
+    var pauseResumeCount: Int = 0,
+
+    @ColumnInfo(name = PAUSE_SKIP_COUNT)
+    var pauseSkipCount: Int = 0,
+
+    @ColumnInfo(name = DROPOUT_COUNT)
+    var dropoutCount: Int = 0,
+
+    @ColumnInfo(name = DROPOUT_MEAN)
+    var dropoutMean: Double = 0.0,
+
+    @ColumnInfo(name = DROPOUT_M2)
+    var dropoutM2: Double = 0.0
 ) {
     companion object {
         const val TABLE_NAME = "playback_statistics"
@@ -102,5 +131,14 @@ data class PlaybackStatisticsEntity(
         const val PLAY_COUNT = "play_count"
         const val SEEK_COUNT = "seek_count"
         const val LAST_UPDATED = "last_updated"
+        const val FORWARD_SEEK_COUNT = "forward_seek_count"
+        const val BACKWARD_SEEK_COUNT = "backward_seek_count"
+        const val VOLUME_UP_COUNT = "volume_up_count"
+        const val VOLUME_DOWN_COUNT = "volume_down_count"
+        const val PAUSE_RESUME_COUNT = "pause_resume_count"
+        const val PAUSE_SKIP_COUNT = "pause_skip_count"
+        const val DROPOUT_COUNT = "dropout_count"
+        const val DROPOUT_MEAN = "dropout_mean"
+        const val DROPOUT_M2 = "dropout_m2"
     }
 }

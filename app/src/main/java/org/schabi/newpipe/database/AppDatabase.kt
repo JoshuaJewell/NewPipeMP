@@ -43,7 +43,7 @@ import org.schabi.newpipe.database.subscription.SubscriptionEntity
 
 @TypeConverters(Converters::class)
 @Database(
-    version = Migrations.DB_VER_14,
+    version = Migrations.DB_VER_19,
     entities = [
         SubscriptionEntity::class,
         SearchHistoryEntry::class,

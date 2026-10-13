@@ -49,7 +49,14 @@ data class AdaptiveShufflePendingEventEntity(
     var reward: Double? = null,
 
     @ColumnInfo(name = RESOLVED_AT)
-    var resolvedAt: Long? = null
+    var resolvedAt: Long? = null,
+
+    // From the on-device build's schema (version 18); not written by this build.
+    @ColumnInfo(name = CANDIDATE_STREAM_IDS_BLOB, typeAffinity = ColumnInfo.BLOB)
+    var candidateStreamIdsBlob: ByteArray? = null,
+
+    @ColumnInfo(name = COMPLETION_RATIO)
+    var completionRatio: Double? = null
 ) {
     companion object {
         const val TABLE_NAME = "adaptive_shuffle_pending_events"
@@ -64,5 +71,7 @@ data class AdaptiveShufflePendingEventEntity(
         const val RESOLVED = "resolved"
         const val REWARD = "reward"
         const val RESOLVED_AT = "resolved_at"
+        const val CANDIDATE_STREAM_IDS_BLOB = "candidate_stream_ids_blob"
+        const val COMPLETION_RATIO = "completion_ratio"
     }
 }
