@@ -63,5 +63,7 @@
 # code paths using them are never reached on Android.
 -dontwarn java.awt.**
 -dontwarn javax.imageio.**
+# org.jaudiotagger.test holds desktop command-line tools (using Swing), unused on Android.
+-dontwarn javax.swing.**
 # Frame bodies and other tag classes are instantiated by name via reflection.
--keep class org.jaudiotagger.** { *; }
+-keep class !org.jaudiotagger.test.**, org.jaudiotagger.** { *; }
