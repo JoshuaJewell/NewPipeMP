@@ -50,23 +50,38 @@ class FeatureSchemaTest {
                 previousCompleted = rng.nextBoolean(),
                 previousUploader = if (rng.nextBoolean()) "A" else "B",
                 previousStreamId = null,
-                queueOrigin = QueueOrigin.values()[rng.nextInt(4)]
+                queueOrigin = QueueOrigin.values()[rng.nextInt(4)],
+                screenOn = rng.nextBoolean(),
+                outputRoute = OutputRoute.values()[rng.nextInt(4)]
             )
+            val listens = rng.nextInt(12)
+            val leaveMean = rng.nextDouble()
             val item = CandidateItem(
                 streamId = 1L,
                 durationSeconds = 60L + rng.nextInt(600),
-                userRating = if (rng.nextBoolean()) rng.nextInt(6) else null,
+                userRating = if (rng.nextBoolean()) 1 + rng.nextInt(10) else null,
                 lifetimePlayCount = plays,
                 lifetimeEarlySkips = plays - completions,
                 lifetimeCompletions = completions,
                 daysSinceLastAccess = if (rng.nextBoolean()) rng.nextDouble() * 60 else null,
                 streamType = StreamTypeFeature.values()[rng.nextInt(4)],
                 uploader = if (rng.nextBoolean()) "A" else "C",
-                uploaderAvgRating = if (rng.nextBoolean()) rng.nextDouble() * 5 else null,
+                uploaderAvgRating = if (rng.nextBoolean()) 1 + rng.nextDouble() * 9 else null,
                 uploaderCompletionRate = if (rng.nextBoolean()) rng.nextDouble() else null,
                 uploaderSkipRate = null,
                 playlistCoMembershipWithPrev = rng.nextInt(4),
-                isDownloadedOffline = rng.nextBoolean()
+                isDownloadedOffline = rng.nextBoolean(),
+                listenEvents = ListenEventCounts(
+                    forwardSeeks = rng.nextInt(8),
+                    backwardSeeks = rng.nextInt(8),
+                    pauseResumes = rng.nextInt(5),
+                    pauseSkips = rng.nextInt(3),
+                    volumeUps = rng.nextInt(10),
+                    volumeDowns = rng.nextInt(10),
+                    leaveCount = listens,
+                    leaveMean = leaveMean,
+                    leaveM2 = rng.nextDouble() * listens * 0.1
+                )
             )
             val x = FeatureExtractor.buildRawVector(ctx, item)
             for (i in 0 until d) for (j in 0 until d) gram[i * d + j] += x[i] * x[j]

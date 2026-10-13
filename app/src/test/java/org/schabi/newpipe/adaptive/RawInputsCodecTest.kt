@@ -77,6 +77,104 @@ class RawInputsCodecTest {
         assertEquals(item, decoded.item)
     }
 
+    private val richContext = DecisionContext(
+        hourOfDay = 22,
+        dayOfWeek = 5,
+        sessionPosition = 3,
+        recentSkipRate = 0.3,
+        previousAutoQueued = false,
+        previousCompleted = true,
+        previousUploader = "Gabrieli",
+        previousStreamId = 55L,
+        queueOrigin = QueueOrigin.PLAYLIST,
+        screenOn = true,
+        outputRoute = OutputRoute.BLUETOOTH
+    )
+    private val richItem = CandidateItem(
+        streamId = 777L,
+        durationSeconds = 241L,
+        userRating = 9,
+        lifetimePlayCount = 14,
+        lifetimeEarlySkips = 3,
+        lifetimeCompletions = 9,
+        daysSinceLastAccess = 4.25,
+        streamType = StreamTypeFeature.AUDIO,
+        uploader = "Savall",
+        uploaderAvgRating = 7.5,
+        uploaderCompletionRate = 0.6,
+        playlistCoMembershipWithPrev = 1,
+        isDownloadedOffline = false,
+        listenEvents = ListenEventCounts(
+            forwardSeeks = 4,
+            backwardSeeks = 1,
+            pauseResumes = 2,
+            pauseSkips = 1,
+            volumeUps = 6,
+            volumeDowns = 3,
+            leaveCount = 12,
+            leaveMean = 0.71,
+            leaveM2 = 0.93
+        )
+    )
+
+    @Test fun `listening conditions and listen events round trip with the trailer`() {
+        val outcome = RawInputsCodec.Outcome(0.42, 1)
+        val decoded = RawInputsCodec.decode(RawInputsCodec.encode(richContext, richItem, greedy = false, outcome = outcome))
+        assertEquals(richContext, decoded.context)
+        assertEquals(richItem, decoded.item)
+        assertEquals(false, decoded.greedy)
+        assertEquals(outcome, decoded.outcome)
+    }
+
+    // The trailer is a greedy byte, an outcome-present byte, a double and an int.
+    private val trailerBytes = 1 + 1 + 8 + 4
+
+    // The on-device v1.1 build wrote the v2 body and the listening/event block, with no
+    // trailer, as version 5; version 6 added 154 bytes after it.
+    private fun legacy(version: Int, extra: Int = 0): ByteArray {
+        val v7 = RawInputsCodec.encode(richContext, richItem)
+        val body = v7.copyOf(v7.size - trailerBytes)
+        body[0] = version.toByte()
+        return body + ByteArray(extra)
+    }
+
+    @Test fun `v1 point 1 build version 5 decodes conditions and events`() {
+        val decoded = RawInputsCodec.decode(legacy(5))
+        assertEquals(richContext, decoded.context)
+        assertEquals(richItem, decoded.item)
+        assertEquals(null, decoded.greedy)
+        assertEquals(null, decoded.outcome)
+    }
+
+    @Test fun `v1 point 1 build version 6 skips its trailing block`() {
+        val decoded = RawInputsCodec.decode(legacy(6, extra = 154))
+        assertEquals(richContext, decoded.context)
+        assertEquals(richItem, decoded.item)
+    }
+
+    @Test fun `v1 point 1 build version 4 has conditions but no events`() {
+        val v2Body = legacy(5).let { it.copyOf(it.size - (6 * 4 + 4 + 8 + 8 + 2)) }
+        val bytes = v2Body + byteArrayOf(OutputRoute.WIRED.ordinal.toByte(), 0) + ByteArray(8)
+        bytes[0] = 4
+        val decoded = RawInputsCodec.decode(bytes)
+        assertEquals(richContext.copy(screenOn = false, outputRoute = OutputRoute.WIRED), decoded.context)
+        assertEquals(richItem.copy(listenEvents = ListenEventCounts.NONE), decoded.item)
+    }
+
+    @Test fun `attaching an outcome upgrades a legacy blob to the current version`() {
+        val outcome = RawInputsCodec.Outcome(1.0, 0)
+        val upgraded = RawInputsCodec.withOutcome(legacy(6, extra = 154), outcome)
+        assertEquals(7, upgraded[0].toInt())
+        val decoded = RawInputsCodec.decode(upgraded)
+        assertEquals(richItem, decoded.item)
+        assertEquals(outcome, decoded.outcome)
+    }
+
+    @Test fun `stream id list round trips`() {
+        val ids = listOf(3L, 118823L, Long.MAX_VALUE)
+        assertArrayEquals(ids.toLongArray(), RawInputsCodec.decodeStreamIds(RawInputsCodec.encodeStreamIds(ids)))
+    }
+
     @Test fun `feature vector round trip`() {
         val v = doubleArrayOf(1.5, -2.0, 0.0, 3.14, Double.MIN_VALUE)
         assertArrayEquals(v, RawInputsCodec.decodeFeatureVector(RawInputsCodec.encodeFeatureVector(v)), 0.0)

@@ -19,9 +19,24 @@ import java.nio.charset.StandardCharsets
 //      choice) and, once the track resolves, the outcome (completion ratio and restart
 //      delta). The outcome lets any future reward function be replayed exactly, which
 //      v2 could not do because only the scalar reward was stored.
+//   4 to 6: written by the on-device v1.1 build, whose source is lost. Each is the v2
+//      body followed by a block of its own; decoded here, never written:
+//        4: output route (byte), screen on (byte), 8 bytes not decoded.
+//        5: route, screen, then the listen-event counts as six ints (backward seeks,
+//           forward seeks, volume up, volume down, pauses resumed, pauses skipped), the
+//           leave count (int), mean and M2 (doubles).
+//        6: as 5, then 154 bytes (audio features, never filled in) not decoded.
+//      Neither has the v3 trailer.
+//   7: the v2 body, the v5 block, then the v3 trailer. Numbered past the v1.1 build's
+//      versions so its blobs are never mistaken for this layout.
 object RawInputsCodec {
-    private const val VERSION: Byte = 3
+    private const val VERSION: Byte = 7
     private const val VERSION_2: Byte = 2
+    private const val VERSION_3: Byte = 3
+    private const val LEGACY_4: Byte = 4
+    private const val LEGACY_5: Byte = 5
+    private const val LEGACY_6: Byte = 6
+    private const val LEGACY_4_UNDECODED_BYTES = 8
 
     data class Outcome(val completionRatio: Double, val restartDelta: Int)
 
@@ -33,8 +48,8 @@ object RawInputsCodec {
         val outcome: Outcome? = null
     )
 
-    // Re-encodes an existing blob (v2 or v3) with an outcome attached. A v2 blob is
-    // upgraded to v3 on the way through.
+    // Re-encodes an existing blob with an outcome attached, upgrading it to the current
+    // version on the way through.
     fun withOutcome(bytes: ByteArray, outcome: Outcome): ByteArray {
         val d = decode(bytes)
         return encode(d.context, d.item, d.greedy, outcome)
@@ -75,6 +90,9 @@ object RawInputsCodec {
                 Byte.SIZE_BYTES + Double.SIZE_BYTES + // uploader_skip_rate present + value
                 Int.SIZE_BYTES + // playlist_co_membership_with_prev
                 Byte.SIZE_BYTES + // is_downloaded_offline
+                Byte.SIZE_BYTES + Byte.SIZE_BYTES + // v7: output route, screen on
+                6 * Int.SIZE_BYTES + // v7: listen-event counts
+                Int.SIZE_BYTES + Double.SIZE_BYTES + Double.SIZE_BYTES + // v7: leave count, mean, M2
                 Byte.SIZE_BYTES + // v3: greedy flag (0 no, 1 yes, 2 unknown)
                 Byte.SIZE_BYTES + Double.SIZE_BYTES + Int.SIZE_BYTES // v3: outcome present, ratio, restart delta
         val buf = ByteBuffer.allocate(capacity).order(ByteOrder.LITTLE_ENDIAN)
@@ -134,6 +152,18 @@ object RawInputsCodec {
         writeOptionalDouble(buf, item.uploaderSkipRate)
         buf.putInt(item.playlistCoMembershipWithPrev)
         buf.put(if (item.isDownloadedOffline) 1.toByte() else 0.toByte())
+        buf.put(context.outputRoute.ordinal.toByte())
+        buf.put(if (context.screenOn) 1.toByte() else 0.toByte())
+        val e = item.listenEvents
+        buf.putInt(e.backwardSeeks)
+        buf.putInt(e.forwardSeeks)
+        buf.putInt(e.volumeUps)
+        buf.putInt(e.volumeDowns)
+        buf.putInt(e.pauseResumes)
+        buf.putInt(e.pauseSkips)
+        buf.putInt(e.leaveCount)
+        buf.putDouble(e.leaveMean)
+        buf.putDouble(e.leaveM2)
         buf.put(
             when (greedy) {
                 false -> 0.toByte()
@@ -156,7 +186,7 @@ object RawInputsCodec {
     fun decode(bytes: ByteArray): Decoded {
         val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         val v = buf.get()
-        require(v == VERSION || v == VERSION_2) { "unknown raw inputs version $v" }
+        require(v in SUPPORTED) { "unknown raw inputs version $v" }
         val hour = buf.get().toInt()
         val dow = buf.get().toInt()
         val session = buf.getInt()
@@ -204,9 +234,30 @@ object RawInputsCodec {
         val uploaderSkipRate = readOptionalDouble(buf)
         val coMembership = buf.getInt()
         val isOffline = buf.get() != 0.toByte()
+        var conditions = ListeningConditions.UNKNOWN
+        var events = ListenEventCounts.NONE
+        if (v == LEGACY_4 || v == LEGACY_5 || v == LEGACY_6 || v == VERSION) {
+            val route = OutputRoute.values().getOrElse(buf.get().toInt()) { OutputRoute.OTHER }
+            conditions = ListeningConditions(screenOn = buf.get() != 0.toByte(), outputRoute = route)
+        }
+        if (v == LEGACY_4) {
+            buf.position(buf.position() + LEGACY_4_UNDECODED_BYTES)
+        } else if (v == LEGACY_5 || v == LEGACY_6 || v == VERSION) {
+            events = ListenEventCounts(
+                backwardSeeks = buf.getInt(),
+                forwardSeeks = buf.getInt(),
+                volumeUps = buf.getInt(),
+                volumeDowns = buf.getInt(),
+                pauseResumes = buf.getInt(),
+                pauseSkips = buf.getInt(),
+                leaveCount = buf.getInt(),
+                leaveMean = buf.getDouble(),
+                leaveM2 = buf.getDouble()
+            )
+        }
         var greedy: Boolean? = null
         var outcome: Outcome? = null
-        if (v == VERSION) {
+        if (v == VERSION_3 || v == VERSION) {
             greedy = when (buf.get().toInt()) {
                 0 -> false
                 1 -> true
@@ -227,7 +278,9 @@ object RawInputsCodec {
                 previousCompleted = prevComplete,
                 previousUploader = prevUploader,
                 previousStreamId = prevStreamId,
-                queueOrigin = origin
+                queueOrigin = origin,
+                screenOn = conditions.screenOn,
+                outputRoute = conditions.outputRoute
             ),
             item = CandidateItem(
                 streamId = streamId,
@@ -243,12 +296,15 @@ object RawInputsCodec {
                 uploaderCompletionRate = uploaderCompletionRate,
                 uploaderSkipRate = uploaderSkipRate,
                 playlistCoMembershipWithPrev = coMembership,
-                isDownloadedOffline = isOffline
+                isDownloadedOffline = isOffline,
+                listenEvents = events
             ),
             greedy = greedy,
             outcome = outcome
         )
     }
+
+    private val SUPPORTED = setOf(VERSION_2, VERSION_3, LEGACY_4, LEGACY_5, LEGACY_6, VERSION)
 
     private fun writeOptionalDouble(buf: ByteBuffer, value: Double?) {
         if (value != null) {
@@ -264,6 +320,20 @@ object RawInputsCodec {
         val present = buf.get() != 0.toByte()
         val value = buf.getDouble()
         return if (present) value else null
+    }
+
+    // The candidates a decision chose from, as the v1.1 build stored them: a count, then
+    // each stream id.
+    fun encodeStreamIds(ids: List<Long>): ByteArray {
+        val buf = ByteBuffer.allocate(Int.SIZE_BYTES + ids.size * Long.SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+        buf.putInt(ids.size)
+        for (id in ids) buf.putLong(id)
+        return buf.array()
+    }
+
+    fun decodeStreamIds(bytes: ByteArray): LongArray {
+        val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        return LongArray(buf.getInt()) { buf.getLong() }
     }
 
     fun encodeFeatureVector(v: DoubleArray): ByteArray {

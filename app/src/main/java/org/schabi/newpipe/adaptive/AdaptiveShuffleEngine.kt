@@ -6,6 +6,7 @@ package org.schabi.newpipe.adaptive
 
 import java.util.Random
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.roundToInt
 import org.schabi.newpipe.database.adaptive.AdaptiveShufflePendingEventEntity
 
 enum class SelectionMode { UCB, THOMPSON }
@@ -103,7 +104,8 @@ class AdaptiveShuffleEngine(
                 rawInputsBlob = RawInputsCodec.encode(context, chosen, greedy = greedy),
                 predictedReward = scores[chosenIdx].predictedReward,
                 uncertainty = scores[chosenIdx].uncertainty,
-                candidateCount = candidates.size
+                candidateCount = candidates.size,
+                candidateStreamIdsBlob = RawInputsCodec.encodeStreamIds(candidates.map { it.streamId })
             )
             val eventId = store.insertPending(event)
             DecisionResult(chosen, scores[chosenIdx], eventId, greedy)
@@ -207,7 +209,10 @@ class AdaptiveShuffleEngine(
                 skipped += 1
                 continue
             }
-            var outcome = decoded.outcome
+            var outcome = decoded.outcome ?: outcomeFromColumn(e, storedReward)?.also {
+                // The on-device v1.1 build kept the ratio in a column; fold it into the blob.
+                store.updateRawInputs(e.id, RawInputsCodec.withOutcome(e.rawInputsBlob, it))
+            }
             if (outcome != null) {
                 fromStored += 1
             } else {
@@ -233,6 +238,17 @@ class AdaptiveShuffleEngine(
         initialised = true
         persist()
         RebuildReport(resolved.size, ingested, fromStored, fromTelemetry, carried, skipped)
+    }
+
+    // The on-device v1.1 build stored the completion ratio in a column, and its reward was
+    // this build's fromRatio, so the reward's remainder over fromRatio(ratio, 0) is the
+    // rewind bonus, from which the restart delta follows.
+    private fun outcomeFromColumn(e: AdaptiveShufflePendingEventEntity, storedReward: Double): RawInputsCodec.Outcome? {
+        val ratio = e.completionRatio ?: return null
+        val bonus = storedReward - RewardCalculator.fromRatio(ratio, 0)
+        val delta = (bonus / AdaptiveShuffleConfig.REWARD_REWIND_DENSITY).roundToInt()
+            .coerceIn(0, AdaptiveShuffleConfig.REWIND_CAP.toInt())
+        return RawInputsCodec.Outcome(ratio, delta)
     }
 
     // Used by Bootstrap: a prior built from weighted synthetic examples.

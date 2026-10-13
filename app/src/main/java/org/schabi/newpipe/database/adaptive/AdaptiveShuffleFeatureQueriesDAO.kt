@@ -76,7 +76,11 @@ abstract class AdaptiveShuffleFeatureQueriesDAO {
     @Query(
         """
         SELECT stream_id AS streamId, skip_count AS skips,
-               completion_count AS completions, play_count AS plays
+               completion_count AS completions, play_count AS plays,
+               forward_seek_count AS forwardSeeks, backward_seek_count AS backwardSeeks,
+               pause_resume_count AS pauseResumes, pause_skip_count AS pauseSkips,
+               volume_up_count AS volumeUps, volume_down_count AS volumeDowns,
+               dropout_count AS leaveCount, dropout_mean AS leaveMean, dropout_m2 AS leaveM2
         FROM playback_statistics
         WHERE stream_id IN (:streamIds)
         """
@@ -118,7 +122,21 @@ abstract class AdaptiveShuffleFeatureQueriesDAO {
 
     data class UploaderRow(val uploader: String, val avgRating: Double?, val completions: Int, val skips: Int)
 
-    data class StatisticsRow(val streamId: Long, val skips: Int, val completions: Int, val plays: Int)
+    data class StatisticsRow(
+        val streamId: Long,
+        val skips: Int,
+        val completions: Int,
+        val plays: Int,
+        val forwardSeeks: Int = 0,
+        val backwardSeeks: Int = 0,
+        val pauseResumes: Int = 0,
+        val pauseSkips: Int = 0,
+        val volumeUps: Int = 0,
+        val volumeDowns: Int = 0,
+        val leaveCount: Int = 0,
+        val leaveMean: Double = 0.0,
+        val leaveM2: Double = 0.0
+    )
 
     data class LastAccessRow(val streamId: Long, val lastAccessMillis: Long)
 

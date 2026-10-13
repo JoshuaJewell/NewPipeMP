@@ -8,11 +8,11 @@ This document merges the three earlier specs into one and corrects them against 
 
 ---
 
-## 0. Source-of-truth warning
+## 0. Source of truth
 
-The build running on the phone is ahead of `dev`. On-device debug screenshots at n=241 and n=570 show features that do not exist in the pushed `FeatureSchema` (screen state, output route, seek direction, pause subtypes, volume gestures, drop-off consistency, average leave-point). `dev` has 27 features and none of these.
+The build that ran on the phone (v1.1) was ahead of `dev`: its debug screenshots at n=241 and n=570 show features that `dev` never had (screen state, output route, seek direction, pause subtypes, volume gestures, drop-off consistency, average leave-point). Its source was never pushed and is now lost (13 October 2026). Its data survives: a database it exported (schema version 18) shows what its versions 15 to 18 added, and its decision log holds about 1,800 events in its own blob formats.
 
-**Before implementing anything in §6, push the on-device branch.** Every defect in §5 was found in `dev`; each must be re-checked against the pushed v1.1 code, since some may have been fixed or reshaped there. Section 4 specifies the v1.1 instrumentation from the screenshots so the pushed code can be checked against intent.
+So there is no other branch to wait for. `claude/amazing-archimedes-vdf3b0` is the main line: §5 was checked against `dev` and fixed there, §4 is rebuilt there from this spec and the exported data (§10), and it opens the v1.1 build's databases (schema version 19, a no-op step from 18).
 
 ---
 
@@ -120,9 +120,9 @@ The debug-view narration at the time read stabilising weights as convergence. Th
 
 ---
 
-## 4. v1.1 instrumentation (on device, not in `dev`)
+## 4. v1.1 instrumentation
 
-Specified from the debug screenshots so the pushed code can be checked for intent. Implementer: confirm each exists, how it is computed, and that it is in `RawInputsCodec` (with a version bump) so it survives rebuilds.
+Specified from the debug screenshots. The v1.1 build's code is lost (§0); this is rebuilt in `claude/amazing-archimedes-vdf3b0`, recording into the columns that build left, in the same form, so its counts carry on (§10).
 
 Context:
 - screen on during playback
@@ -146,7 +146,7 @@ Still unlogged (from the hooks audit, not required here): share events, notifica
 
 ## 5. Defects found in `dev`
 
-Each is stated with its location and consequence. Re-check each against the pushed v1.1 branch.
+Each is stated with its location and consequence, as found in `dev`. All are addressed in `claude/amazing-archimedes-vdf3b0` (§10).
 
 ### D1. Queue origin is hard-coded, making one feature identical to the bias
 
@@ -394,7 +394,7 @@ Validation:
 
 ## 9. Decisions for Joshua
 
-1. Push the on-device branch (§0).
+1. ~~Push the on-device branch (§0).~~ Moot: its source is lost. One thing only it could have settled: the order of its output-route values (§10).
 2. Candidate scope: keep the sample of 30 from the queue tail, score the whole tail, or score the whole library (§2.2).
 3. Recency window N (default 40) and whether it should scale with library size.
 4. Whether any absolute artist-affinity term returns after the §8 experiment.
@@ -449,13 +449,22 @@ Edge cases in playback and statistics, found by tracing the player rather than t
 
 The pure parts (`ListenJudge`, `PlaybackFailurePolicy`, `ShuffleSession`, the engine changes) are unit tested; the integration type-checks against stubs of the queue types. The `Player.java` glue passes checkstyle and a syntax check but has not been compiled: there is still no Android SDK in the sandbox.
 
-Pick cost. A pick ran about six queries per candidate, thirty candidates a pick, and the two uploader queries each scanned the whole `streams` table (no index on `uploader`), up to sixty scans a pick. Candidate facts are now fetched in one batched query per kind (`AdaptiveShuffleFeatureQueriesDAO`), uploader aggregates in one grouped query and cached for ten minutes (`UploaderStatsCache`), and stream rows by a plain blocking lookup instead of a Room `Flowable`. No schema change; an index on `streams.uploader` would help further but needs a migration, so it waits for the v1.1 merge.
+Pick cost. A pick ran about six queries per candidate, thirty candidates a pick, and the two uploader queries each scanned the whole `streams` table (no index on `uploader`), up to sixty scans a pick. Candidate facts are now fetched in one batched query per kind (`AdaptiveShuffleFeatureQueriesDAO`), uploader aggregates in one grouped query and cached for ten minutes (`UploaderStatsCache`), and stream rows by a plain blocking lookup instead of a Room `Flowable`. No schema change; an index on `streams.uploader` would help further and can go in a later migration.
 
-Not done: the v1.1 features (§4) are still unpushed and are not in this branch; the audio pipeline (§8) is untouched.
+Database version 19 and the v1.1 rebuild (§0, §4):
+
+- **Opening v1.1 databases.** An exported v1.1 database (version 18) crashed this branch ("a migration from 18 to 14 was required"). Its schema, read from the export, adds nine `playback_statistics` columns, two `adaptive_shuffle_pending_events` columns and an empty `stream_audio_features` table. Room checks the identity hash only when the database and app versions match, and the v1.1 hash cannot be reproduced without its source, so this branch is version 19: `MIGRATION_18_19` is a no-op, after which Room validates every table against the entities; `MIGRATION_14_19` adds the same columns and table to a version 14 database. Checked offline against the export: every entity table matches column for column, with the same foreign keys and indices, and a version 14 database after `MIGRATION_14_19` has the same tables. An export from this branch (19) does not import into a v1.1 build (18).
+- **Recording** (`Player`, `PlaybackStatisticsDAO`), into the v1.1 columns and in their form, which the exported data shows: seeks split by direction (on top of `seek_count`); media volume steps up and down, from the system's volume broadcast, while a track is current; a pause, once the listen has played, ends as resumed or, if the track is left first, as a pause-skip; and at every judged exit (not the shuffle start grace, a removal or a failure) the leave point (position over duration, 1 for a natural end) goes into a running mean and Welford M2 (`LeavePointStats`) in `dropout_count`, `dropout_mean` and `dropout_m2`.
+- **Features, schema v5** (37). Context: `screen_on`, and `route_bluetooth`, `route_wired`, `route_other` against the phone speaker as baseline (`ListeningConditionsReader`: wired or USB headset first, then Bluetooth, then HDMI, dock, line or USB device). Item: six per-listen rates, `ln(1 + count / listens)`, standardised, over the listens whose leave point was recorded (the count all of them were collected alongside), plus `mean_leave_point` and `leave_point_spread` (sample standard deviation). All are neutral below three recorded listens. The debug descriptions say what is counted, not what it means (§4's note on forward seeks).
+- **Rating scale.** Ratings are stored 1 to 10 (half stars); `user_rating_norm` assumed 1 to 5, so a full rating encoded as 3.5 and `rating_vs_uploader` was clipped. Both now span −1 to 1. The schema hash changes, so the model rebuilds on first launch.
+- **The v1.1 decision log.** Its blobs are versions 4, 5 and 6: the v2 body, then route (byte), screen on (byte), and in 5 and 6 the six counts (backward seeks, forward seeks, volume up, volume down, pauses resumed, pauses skipped), the leave count, mean and M2, then in 6 a 154-byte block (audio features, never filled). The count order was fixed by matching each stream's latest blob against its current counters: one order matches exactly for 335 of 466 streams and never exceeds them for 435, well ahead of any other. This branch reads all three and writes version 7 (the v2 body, that block, the v3 trailer), numbered past them. Its rewards are this branch's `fromRatio`, so for the 518 events with its `completion_ratio` column the restart delta follows from the reward and the full outcome is recovered and folded into the blob. On the exported log, 1,846 of 1,917 events decode (the 71 that do not are version 1, never supported), and a rebuild ingests 1,306 of 1,339 resolved events, against at most 107 before. Each decision's candidates are stored again in `candidate_stream_ids_blob`, in the v1.1 form.
+- **Inferred, not known:** the order of the v1.1 build's route values. It wrote only 0 and 2 (2 for 1,547 of its 1,739 decisions); this branch reads them in the order §4 lists the routes, so 2 is wired. If most of that listening was over Bluetooth, swap `BLUETOOTH` and `WIRED` in `OutputRoute` before new decisions are logged.
+
+Not done: the audio pipeline (§8) is untouched; the v1.1 build's `stream_audio_features` table is created but unused.
 
 ## 11. Brief for Claude Code
 
-You are working in NewPipeMP, the mobile component of Acetate. Read §0 first: `dev` is behind the device build. Do not implement against `dev` until the on-device branch is pushed, then re-verify every item in §5 against it and report which still apply.
+You are working in NewPipeMP, the mobile component of Acetate. Read §0 first: the device build's source is lost, and `claude/amazing-archimedes-vdf3b0` is the main line. The stages below are done there (§10); they are kept as the record of how the work was staged.
 
 Then, in order, one stage per change:
 

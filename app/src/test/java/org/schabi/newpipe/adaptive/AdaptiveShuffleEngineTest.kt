@@ -11,6 +11,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.schabi.newpipe.database.adaptive.AdaptiveShufflePendingEventEntity
 
 class AdaptiveShuffleEngineTest {
 
@@ -164,5 +165,36 @@ class AdaptiveShuffleEngineTest {
         e.captureSnapshot(chosen.streamId, 0)
         e.abandon(2L)
         assertEquals(1, store.events.size)
+    }
+
+    @Test fun `rebuild takes the outcome from the v1 point 1 ratio column and folds it into the blob`() {
+        val store = InMemoryStore()
+        val engine = AdaptiveShuffleEngine(store)
+        engine.initialise()
+        val raw = RawInputsCodec.encode(fixtureContext(), fixtureItem(1L))
+        // A blob without the trailer, as the v1.1 build wrote: version 5, no outcome.
+        val legacy = raw.copyOf(raw.size - (1 + 1 + 8 + 4)).also { it[0] = 5 }
+        // That build's reward: fromRatio with one restart.
+        val reward = RewardCalculator.fromRatio(0.6, 1)
+        store.insertPending(
+            AdaptiveShufflePendingEventEntity(
+                streamId = 1L,
+                chosenAt = 1_000L,
+                featureVectorBlob = ByteArray(0),
+                rawInputsBlob = legacy,
+                predictedReward = 0.0,
+                uncertainty = 0.0,
+                candidateCount = 1,
+                resolved = true,
+                reward = reward,
+                resolvedAt = 2_000L,
+                completionRatio = 0.6
+            )
+        )
+        val report = engine.rebuildFromPending()
+        assertEquals(1, report.ingested)
+        assertEquals(1, report.fromStoredOutcome)
+        val folded = RawInputsCodec.decode(store.events.values.single().rawInputsBlob)
+        assertEquals(RawInputsCodec.Outcome(0.6, 1), folded.outcome)
     }
 }

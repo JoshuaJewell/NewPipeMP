@@ -8,6 +8,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.ln
 import kotlin.math.sin
+import org.schabi.newpipe.player.playback.LeavePointStats
 
 object FeatureExtractor {
     fun buildVector(
@@ -41,7 +42,8 @@ object FeatureExtractor {
         v[FeatureSchema.LOG_DURATION] = ln(1.0 + item.durationSeconds.coerceAtLeast(0L))
         val rating = item.userRating
         v[FeatureSchema.IS_RATED] = if (rating != null) 1.0 else 0.0
-        v[FeatureSchema.USER_RATING] = if (rating != null) (rating - 3.0) / 2.0 else 0.0
+        // Ratings are stored 1 to 10 (half stars); this maps them onto -1 to 1.
+        v[FeatureSchema.USER_RATING] = if (rating != null) ((rating - 5.5) / 4.5).coerceIn(-1.0, 1.0) else 0.0
         v[FeatureSchema.LOG_PLAY_COUNT] = ln(1.0 + item.lifetimePlayCount.coerceAtLeast(0))
 
         // Over finished listens only. lifetimeEarlySkips holds every skip short of the
@@ -79,6 +81,14 @@ object FeatureExtractor {
         // Implicit positive: the user has chosen to keep this track locally.
         v[FeatureSchema.IS_OFFLINE] = if (item.isDownloadedOffline) 1.0 else 0.0
 
+        // Listening conditions. The phone speaker is the baseline the bias holds.
+        v[FeatureSchema.SCREEN_ON] = if (context.screenOn) 1.0 else 0.0
+        v[FeatureSchema.ROUTE_BLUETOOTH] = if (context.outputRoute == OutputRoute.BLUETOOTH) 1.0 else 0.0
+        v[FeatureSchema.ROUTE_WIRED] = if (context.outputRoute == OutputRoute.WIRED) 1.0 else 0.0
+        v[FeatureSchema.ROUTE_OTHER] = if (context.outputRoute == OutputRoute.OTHER) 1.0 else 0.0
+
+        putListenEvents(v, item.listenEvents)
+
         v[FeatureSchema.BIAS] = 1.0
 
         return v
@@ -94,10 +104,29 @@ object FeatureExtractor {
         return (trackRate - uploaderRate).coerceIn(-1.0, 1.0)
     }
 
-    // Ratings run 0 to 5, so a difference spans at most 5; divide to keep it in [-1, 1].
+    // Ratings run 1 to 10, so a difference spans at most 9; divide to keep it in [-1, 1].
     internal fun ratingVsUploader(item: CandidateItem): Double {
         val rating = item.userRating ?: return 0.0
         val avg = item.uploaderAvgRating ?: return 0.0
-        return ((rating - avg) / 5.0).coerceIn(-1.0, 1.0)
+        return ((rating - avg) / 9.0).coerceIn(-1.0, 1.0)
+    }
+
+    // Until a track has enough recorded listens, every listen-event feature is neutral:
+    // zero rates and spread, and the cold-start prior for the mean leave point.
+    private fun putListenEvents(v: DoubleArray, e: ListenEventCounts) {
+        val listens = e.leaveCount
+        if (listens < AdaptiveShuffleConfig.COLD_START_MIN_PLAYS) {
+            v[FeatureSchema.MEAN_LEAVE_POINT] = AdaptiveShuffleConfig.COLD_START_COMPLETION_RATIO
+            return
+        }
+        fun perListen(count: Int) = ln(1.0 + count.coerceAtLeast(0).toDouble() / listens)
+        v[FeatureSchema.FORWARD_SEEKS] = perListen(e.forwardSeeks)
+        v[FeatureSchema.BACKWARD_SEEKS] = perListen(e.backwardSeeks)
+        v[FeatureSchema.PAUSE_RESUMES] = perListen(e.pauseResumes)
+        v[FeatureSchema.PAUSE_SKIPS] = perListen(e.pauseSkips)
+        v[FeatureSchema.VOLUME_UPS] = perListen(e.volumeUps)
+        v[FeatureSchema.VOLUME_DOWNS] = perListen(e.volumeDowns)
+        v[FeatureSchema.MEAN_LEAVE_POINT] = e.leaveMean.coerceIn(0.0, 1.0)
+        v[FeatureSchema.LEAVE_POINT_SPREAD] = LeavePointStats.spread(listens, e.leaveM2) ?: 0.0
     }
 }

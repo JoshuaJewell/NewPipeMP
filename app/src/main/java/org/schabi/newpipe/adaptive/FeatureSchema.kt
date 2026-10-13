@@ -21,6 +21,14 @@ object FeatureSchema {
     // Schema v4 renames completion_ratio to completion_rate and divides by finished
     // listens (completions plus skips) instead of play_count, which also counts every
     // resume and rebuffer. The rename changes the hash, so the model rebuilds.
+    // Schema v5 adds the v1.1 instrumentation (ADAPTIVE_SHUFFLE_SPEC.md, section 4):
+    //   - Context: screen on, and the output route as one-hots with the phone speaker as
+    //     the baseline the bias holds (as with queue origin).
+    //   - Item: six per-listen event rates and the mean and spread of the leave point.
+    //     Rates divide by the listens whose leave point was recorded, the one count all
+    //     of them were collected alongside.
+    // It also puts user_rating_norm on the 1 to 10 scale ratings are stored in (it assumed
+    // 1 to 5, so a full rating encoded as 3.5), and divides rating_vs_uploader by 9.
     val names: List<String> = listOf(
         "hour_sin", "hour_cos", "dow_sin", "dow_cos",
         "session_position", "recent_skip_rate",
@@ -32,6 +40,11 @@ object FeatureSchema {
         "same_uploader_as_prev",
         "completion_vs_uploader", "rating_vs_uploader",
         "playlist_co_membership_prev", "is_downloaded_offline",
+        "screen_on", "route_bluetooth", "route_wired", "route_other",
+        "forward_seeks_per_listen", "backward_seeks_per_listen",
+        "pause_resumes_per_listen", "pause_skips_per_listen",
+        "volume_ups_per_listen", "volume_downs_per_listen",
+        "mean_leave_point", "leave_point_spread",
         "bias"
     )
 
@@ -59,9 +72,21 @@ object FeatureSchema {
     const val RATING_VS_UPLOADER = 21
     const val PLAYLIST_CO_MEMBERSHIP = 22
     const val IS_OFFLINE = 23
-    const val BIAS = 24
+    const val SCREEN_ON = 24
+    const val ROUTE_BLUETOOTH = 25
+    const val ROUTE_WIRED = 26
+    const val ROUTE_OTHER = 27
+    const val FORWARD_SEEKS = 28
+    const val BACKWARD_SEEKS = 29
+    const val PAUSE_RESUMES = 30
+    const val PAUSE_SKIPS = 31
+    const val VOLUME_UPS = 32
+    const val VOLUME_DOWNS = 33
+    const val MEAN_LEAVE_POINT = 34
+    const val LEAVE_POINT_SPREAD = 35
+    const val BIAS = 36
 
-    const val DIMENSION: Int = 25
+    const val DIMENSION: Int = 37
 
     // Indices whose values vary on a continuous unbounded scale and benefit from running
     // standardisation. Bounded or one-hot features pass through untouched.
@@ -69,7 +94,13 @@ object FeatureSchema {
         SESSION_POSITION,
         LOG_DURATION,
         LOG_PLAY_COUNT,
-        DAYS_SINCE_PLAYED
+        DAYS_SINCE_PLAYED,
+        FORWARD_SEEKS,
+        BACKWARD_SEEKS,
+        PAUSE_RESUMES,
+        PAUSE_SKIPS,
+        VOLUME_UPS,
+        VOLUME_DOWNS
     )
 
     // Stable SHA-256 over the feature name list. Any reorder, rename or addition
@@ -96,7 +127,7 @@ object FeatureSchema {
         "queue_origin_channel" to "Queue came from a channel tab (vs search or related)",
         "log_duration" to "Track length (log scale)",
         "is_rated" to "Track has a star rating at all",
-        "user_rating_norm" to "Your five-star rating, centred to zero",
+        "user_rating_norm" to "Your rating, centred to zero",
         "log_play_count" to "Lifetime plays of this track (log scale)",
         "completion_rate" to "Share of this track's finished listens that reached the end",
         "days_since_played" to "Time since last play (log scale)",
@@ -107,6 +138,18 @@ object FeatureSchema {
         "rating_vs_uploader" to "Rating relative to this uploader's average",
         "playlist_co_membership_prev" to "Playlists containing both this and the previous track (log scale)",
         "is_downloaded_offline" to "Track is available offline",
+        "screen_on" to "Screen was on when the pick was made",
+        "route_bluetooth" to "Playing over Bluetooth (vs phone speaker)",
+        "route_wired" to "Playing over wired or USB headphones (vs phone speaker)",
+        "route_other" to "Playing over another output, such as HDMI or a dock (vs phone speaker)",
+        "forward_seeks_per_listen" to "Forward seeks per listen of this track (log scale)",
+        "backward_seeks_per_listen" to "Backward seeks per listen of this track (log scale)",
+        "pause_resumes_per_listen" to "Pauses later resumed, per listen (log scale)",
+        "pause_skips_per_listen" to "Pauses that ended in leaving the track, per listen (log scale)",
+        "volume_ups_per_listen" to "Volume-up steps per listen (log scale)",
+        "volume_downs_per_listen" to "Volume-down steps per listen (log scale)",
+        "mean_leave_point" to "Average point in this track at which you leave it",
+        "leave_point_spread" to "How much that leave point varies between listens",
         "bias" to "Constant baseline (model's average reward)"
     )
 }
@@ -120,7 +163,9 @@ data class DecisionContext(
     val previousCompleted: Boolean,
     val previousUploader: String?,
     val previousStreamId: Long?,
-    val queueOrigin: QueueOrigin
+    val queueOrigin: QueueOrigin,
+    val screenOn: Boolean = false,
+    val outputRoute: OutputRoute = OutputRoute.SPEAKER
 )
 
 // Ordinals are persisted by RawInputsCodec; append new values, never reorder.
@@ -141,7 +186,28 @@ data class CandidateItem(
     // Persisted for history but no longer a feature: it is 1 - uploaderCompletionRate.
     val uploaderSkipRate: Double? = null,
     val playlistCoMembershipWithPrev: Int = 0,
-    val isDownloadedOffline: Boolean = false
+    val isDownloadedOffline: Boolean = false,
+    val listenEvents: ListenEventCounts = ListenEventCounts.NONE
 )
+
+// Lifetime per-listen counts from playback_statistics (spec section 4). leaveCount is the
+// number of listens whose leave point was recorded, with the mean and Welford M2 of those
+// points; the event counts are divided by it.
+data class ListenEventCounts(
+    val forwardSeeks: Int = 0,
+    val backwardSeeks: Int = 0,
+    val pauseResumes: Int = 0,
+    val pauseSkips: Int = 0,
+    val volumeUps: Int = 0,
+    val volumeDowns: Int = 0,
+    val leaveCount: Int = 0,
+    val leaveMean: Double = 0.0,
+    val leaveM2: Double = 0.0
+) {
+    companion object {
+        @JvmField
+        val NONE = ListenEventCounts()
+    }
+}
 
 enum class StreamTypeFeature { VIDEO, AUDIO, LIVE_VIDEO, LIVE_AUDIO }

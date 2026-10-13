@@ -188,6 +188,15 @@ public final class Player implements PlaybackListener, Listener {
 
     public static final int RENDERER_UNAVAILABLE = -1;
 
+    // The system's volume change broadcast and its extras. Not in the public SDK, but stable
+    // since Android 4 and what ExoPlayer itself listens to for device volume.
+    private static final String VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION";
+    private static final String EXTRA_VOLUME_STREAM_TYPE = "android.media.EXTRA_VOLUME_STREAM_TYPE";
+    private static final String EXTRA_VOLUME_STREAM_VALUE =
+            "android.media.EXTRA_VOLUME_STREAM_VALUE";
+    private static final String EXTRA_PREV_VOLUME_STREAM_VALUE =
+            "android.media.EXTRA_PREV_VOLUME_STREAM_VALUE";
+
     /*//////////////////////////////////////////////////////////////////////////
     // Playback
     //////////////////////////////////////////////////////////////////////////*/
@@ -260,6 +269,12 @@ public final class Player implements PlaybackListener, Listener {
     // The first item played from the current queue, for the shuffle start grace.
     @Nullable
     private PlayQueueItem queueStartItem = null;
+    // The current listen has actually played, so a pause in it is the user's (and not the
+    // paused state a restored queue starts in).
+    private boolean currentListenHasPlayed = false;
+    // A pause in the current listen that has not yet ended in a resume or in leaving the
+    // track; recorded as one or the other in playback_statistics.
+    private boolean pauseOutcomePending = false;
 
     /*//////////////////////////////////////////////////////////////////////////
     // Adaptive shuffle and failure handling
@@ -855,6 +870,7 @@ public final class Player implements PlaybackListener, Listener {
         intentFilter.addAction(Intent.ACTION_SCREEN_ON);
         intentFilter.addAction(Intent.ACTION_SCREEN_OFF);
         intentFilter.addAction(Intent.ACTION_HEADSET_PLUG);
+        intentFilter.addAction(VOLUME_CHANGED_ACTION);
     }
 
     private void onBroadcastReceived(final Intent intent) {
@@ -899,6 +915,9 @@ public final class Player implements PlaybackListener, Listener {
                 break;
             case Intent.ACTION_SCREEN_ON:
                 screenOn = true;
+                break;
+            case VOLUME_CHANGED_ACTION:
+                recordVolumeStep(intent);
                 break;
             case Intent.ACTION_CONFIGURATION_CHANGED:
                 if (DEBUG) {
@@ -1278,6 +1297,8 @@ public final class Player implements PlaybackListener, Listener {
         startPlaybackTimeTracking();
         // Record play/resume event
         recordPlayEvent();
+        recordPauseOutcome(true);
+        currentListenHasPlayed = true;
         failurePolicy.onPlaybackStarted();
 
         UIs.call(PlayerUi::onPlaying);
@@ -1304,6 +1325,9 @@ public final class Player implements PlaybackListener, Listener {
         saveAccumulatedPlayTime();
         // Record pause event
         recordPauseEvent();
+        if (currentListenHasPlayed && currentStreamDatabaseId != -1) {
+            pauseOutcomePending = true;
+        }
 
         UIs.call(PlayerUi::onPaused);
     }
@@ -1504,8 +1528,14 @@ public final class Player implements PlaybackListener, Listener {
         }
         final long position = naturalEnd ? duration : Math.max(0, positionMillis);
         addPlayTime(streamId, position - playbackStartPositionMillis);
+        recordPauseOutcome(false);
 
         final boolean unjudged = currentListenUnjudged || removed;
+        if (!unjudged) {
+            databaseUpdateDisposable.add(recordManager
+                    .recordLeavePoint(streamId, Math.min(1.0, (double) position / duration))
+                    .onErrorComplete().subscribe());
+        }
         switch (ListenJudge.judge(position, duration, naturalEnd, unjudged)) {
             case COMPLETION:
                 databaseUpdateDisposable.add(recordManager.recordCompletion(streamId)
@@ -1833,7 +1863,7 @@ public final class Player implements PlaybackListener, Listener {
                     );
                     // Record seek event (unless it's a restart, which is already recorded)
                     if (!isRestart) {
-                        recordSeekEvent();
+                        recordSeekEvent(newPosition.positionMs > oldPosition.positionMs);
                     }
                 }
                 if (isPrepared) {
@@ -2879,6 +2909,8 @@ public final class Player implements PlaybackListener, Listener {
         accumulatedPlayTimeMillis = 0;
         playbackStartPositionMillis = 0;
         currentListenClosed = false;
+        currentListenHasPlayed = false;
+        pauseOutcomePending = false;
         // Shuffle may be turned on while the first track is still loading; keep the grace
         // for that item when its metadata arrives, and drop it for any other.
         if (playQueue == null || playQueue.getItem() != unjudgedItem) {
@@ -3063,13 +3095,56 @@ public final class Player implements PlaybackListener, Listener {
         );
     }
 
-    private void recordSeekEvent() {
+    private void recordSeekEvent(final boolean forward) {
         if (currentStreamDatabaseId == -1) {
             return;
         }
 
         databaseUpdateDisposable.add(
-            recordManager.recordSeek(currentStreamDatabaseId)
+            recordManager.recordSeek(currentStreamDatabaseId, forward)
+                .onErrorComplete()
+                .subscribe()
+        );
+    }
+
+    /**
+     * Ends a pending pause in the current listen, if there is one.
+     *
+     * @param resumed true if playback resumed, false if the track was left while paused
+     */
+    private void recordPauseOutcome(final boolean resumed) {
+        if (!pauseOutcomePending) {
+            return;
+        }
+        pauseOutcomePending = false;
+        if (currentStreamDatabaseId == -1) {
+            return;
+        }
+        databaseUpdateDisposable.add(
+            recordManager.recordPauseOutcome(currentStreamDatabaseId, resumed)
+                .onErrorComplete()
+                .subscribe()
+        );
+    }
+
+    /**
+     * Records a step of the media volume made while a track is current.
+     *
+     * @param intent the system's volume changed broadcast
+     */
+    private void recordVolumeStep(final Intent intent) {
+        if (currentStreamDatabaseId == -1
+                || intent.getIntExtra(EXTRA_VOLUME_STREAM_TYPE, -1)
+                != AudioManager.STREAM_MUSIC) {
+            return;
+        }
+        final int value = intent.getIntExtra(EXTRA_VOLUME_STREAM_VALUE, -1);
+        final int previous = intent.getIntExtra(EXTRA_PREV_VOLUME_STREAM_VALUE, -1);
+        if (value < 0 || previous < 0 || value == previous) {
+            return;
+        }
+        databaseUpdateDisposable.add(
+            recordManager.recordVolumeStep(currentStreamDatabaseId, value > previous)
                 .onErrorComplete()
                 .subscribe()
         );

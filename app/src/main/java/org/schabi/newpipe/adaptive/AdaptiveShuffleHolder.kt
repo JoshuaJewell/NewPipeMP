@@ -42,7 +42,15 @@ object AdaptiveShuffleHolder {
                 val prefs = PreferenceManager.getDefaultSharedPreferences(appContext)
                 if (prefs.getBoolean(thompsonKey, false)) SelectionMode.THOMPSON else SelectionMode.UCB
             }
-            val created = AdaptivePlayerIntegration(engine, materialiser, repository, telemetry, selectionMode)
+            val conditions = ListeningConditionsReader(appContext)
+            val created = AdaptivePlayerIntegration(
+                engine,
+                materialiser,
+                repository,
+                telemetry,
+                selectionMode,
+                conditions = conditions::read
+            )
             val init = engine.initialise()
             if (init is AdaptiveShuffleEngine.InitialiseResult.SchemaMismatch) {
                 // Schema changed: replay history under the new features and reward, using

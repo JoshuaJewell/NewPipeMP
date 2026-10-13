@@ -10,6 +10,7 @@ import io.reactivex.rxjava3.core.Flowable
 import io.reactivex.rxjava3.core.Maybe
 import java.time.OffsetDateTime
 import org.schabi.newpipe.database.playback.model.PlaybackStatisticsEntity
+import org.schabi.newpipe.player.playback.LeavePointStats
 
 @Dao
 abstract class PlaybackStatisticsDAO {
@@ -109,6 +110,67 @@ abstract class PlaybackStatisticsDAO {
         """
     )
     internal abstract fun incrementSeekCount(streamId: Long, lastUpdated: OffsetDateTime): Int
+
+    @Query(
+        """
+        UPDATE playback_statistics SET
+            forward_seek_count = forward_seek_count + :forward,
+            backward_seek_count = backward_seek_count + :backward,
+            last_updated = :lastUpdated
+        WHERE stream_id = :streamId
+        """
+    )
+    internal abstract fun addSeekDirection(
+        streamId: Long,
+        forward: Int,
+        backward: Int,
+        lastUpdated: OffsetDateTime
+    ): Int
+
+    @Query(
+        """
+        UPDATE playback_statistics SET
+            volume_up_count = volume_up_count + :up,
+            volume_down_count = volume_down_count + :down,
+            last_updated = :lastUpdated
+        WHERE stream_id = :streamId
+        """
+    )
+    internal abstract fun addVolumeStep(streamId: Long, up: Int, down: Int, lastUpdated: OffsetDateTime): Int
+
+    @Query(
+        """
+        UPDATE playback_statistics SET
+            pause_resume_count = pause_resume_count + :resumed,
+            pause_skip_count = pause_skip_count + :skipped,
+            last_updated = :lastUpdated
+        WHERE stream_id = :streamId
+        """
+    )
+    internal abstract fun addPauseOutcome(
+        streamId: Long,
+        resumed: Int,
+        skipped: Int,
+        lastUpdated: OffsetDateTime
+    ): Int
+
+    @Query(
+        """
+        UPDATE playback_statistics SET
+            dropout_count = :count,
+            dropout_mean = :mean,
+            dropout_m2 = :m2,
+            last_updated = :lastUpdated
+        WHERE stream_id = :streamId
+        """
+    )
+    internal abstract fun setLeavePointStats(
+        streamId: Long,
+        count: Int,
+        mean: Double,
+        m2: Double,
+        lastUpdated: OffsetDateTime
+    ): Int
 
     @Query("SELECT SUM(total_play_time_millis) FROM playback_statistics")
     abstract fun getTotalPlayTime(): Flowable<Long>
@@ -248,6 +310,50 @@ abstract class PlaybackStatisticsDAO {
     open fun recordSeek(streamId: Long) {
         ensureStatsExist(streamId)
         incrementSeekCount(streamId, OffsetDateTime.now())
+    }
+
+    /**
+     * Records a seek within a stream, with its direction.
+     */
+    @Transaction
+    open fun recordSeek(streamId: Long, forward: Boolean) {
+        ensureStatsExist(streamId)
+        val now = OffsetDateTime.now()
+        incrementSeekCount(streamId, now)
+        addSeekDirection(streamId, if (forward) 1 else 0, if (forward) 0 else 1, now)
+    }
+
+    /**
+     * Records one step of the media volume, up or down, while the stream was current.
+     */
+    @Transaction
+    open fun recordVolumeStep(streamId: Long, up: Boolean) {
+        ensureStatsExist(streamId)
+        addVolumeStep(streamId, if (up) 1 else 0, if (up) 0 else 1, OffsetDateTime.now())
+    }
+
+    /**
+     * Records how a pause ended: playback resumed, or the stream was left while paused.
+     */
+    @Transaction
+    open fun recordPauseOutcome(streamId: Long, resumed: Boolean) {
+        ensureStatsExist(streamId)
+        addPauseOutcome(streamId, if (resumed) 1 else 0, if (resumed) 0 else 1, OffsetDateTime.now())
+    }
+
+    /**
+     * Adds the point (0 to 1 of the duration) at which a listen of the stream ended to the
+     * stream's running mean and spread of leave points.
+     */
+    @Transaction
+    open fun recordLeavePoint(streamId: Long, fraction: Double) {
+        ensureStatsExist(streamId)
+        val stats = getStatistics(streamId).blockingGet() ?: return
+        val next = LeavePointStats.add(
+            LeavePointStats(stats.dropoutCount, stats.dropoutMean, stats.dropoutM2),
+            fraction
+        )
+        setLeavePointStats(streamId, next.count, next.mean, next.m2, OffsetDateTime.now())
     }
 
     private fun ensureStatsExist(streamId: Long) {

@@ -23,7 +23,8 @@ class AdaptivePlayerIntegration(
     private val telemetry: TelemetryLog? = null,
     private val selectionMode: () -> SelectionMode = { SelectionMode.UCB },
     private val rng: Random = Random(),
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val conditions: () -> ListeningConditions = { ListeningConditions.UNKNOWN }
 ) {
     // Every method here runs on AdaptiveShuffleHolder.SCHEDULER, a single thread, so
     // resolutions and picks happen in the order the player asked for them.
@@ -273,6 +274,7 @@ class AdaptivePlayerIntegration(
 
     private fun buildContext(origin: QueueOrigin): DecisionContext {
         val now = LocalDateTime.now()
+        val listening = conditions()
         return DecisionContext(
             hourOfDay = now.hour,
             dayOfWeek = (now.dayOfWeek.value - 1).coerceIn(0, 6),
@@ -282,7 +284,9 @@ class AdaptivePlayerIntegration(
             previousCompleted = previousCompleted,
             previousUploader = previousUploader,
             previousStreamId = previousStreamId,
-            queueOrigin = origin
+            queueOrigin = origin,
+            screenOn = listening.screenOn,
+            outputRoute = listening.outputRoute
         )
     }
 

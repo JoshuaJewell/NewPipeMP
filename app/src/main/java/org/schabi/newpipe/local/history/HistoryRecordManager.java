@@ -498,6 +498,58 @@ public class HistoryRecordManager {
     }
 
     /**
+     * Records a seek within a stream, with its direction.
+     *
+     * @param streamId the database ID of the stream
+     * @param forward  whether the seek moved forwards
+     * @return a Completable that completes when the operation is done
+     */
+    public Completable recordSeek(final long streamId, final boolean forward) {
+        return Completable.fromAction(() ->
+                playbackStatisticsTable.recordSeek(streamId, forward))
+                .subscribeOn(Schedulers.io());
+    }
+
+    /**
+     * Records one step of the media volume while a stream was current.
+     *
+     * @param streamId the database ID of the stream
+     * @param up       whether the volume went up
+     * @return a Completable that completes when the operation is done
+     */
+    public Completable recordVolumeStep(final long streamId, final boolean up) {
+        return Completable.fromAction(() ->
+                playbackStatisticsTable.recordVolumeStep(streamId, up))
+                .subscribeOn(Schedulers.io());
+    }
+
+    /**
+     * Records how a pause ended.
+     *
+     * @param streamId the database ID of the stream
+     * @param resumed  true if playback resumed, false if the stream was left while paused
+     * @return a Completable that completes when the operation is done
+     */
+    public Completable recordPauseOutcome(final long streamId, final boolean resumed) {
+        return Completable.fromAction(() ->
+                playbackStatisticsTable.recordPauseOutcome(streamId, resumed))
+                .subscribeOn(Schedulers.io());
+    }
+
+    /**
+     * Records the point at which a listen of a stream ended.
+     *
+     * @param streamId the database ID of the stream
+     * @param fraction the position reached as a fraction of the duration (0 to 1)
+     * @return a Completable that completes when the operation is done
+     */
+    public Completable recordLeavePoint(final long streamId, final double fraction) {
+        return Completable.fromAction(() ->
+                playbackStatisticsTable.recordLeavePoint(streamId, fraction))
+                .subscribeOn(Schedulers.io());
+    }
+
+    /**
      * Gets the database stream ID for a given stream info.
      * Upserts the stream if necessary.
      *

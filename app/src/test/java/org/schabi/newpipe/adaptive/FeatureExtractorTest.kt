@@ -88,20 +88,24 @@ class FeatureExtractorTest {
         assertEquals(0.0, v[FeatureSchema.USER_RATING], 0.0)
     }
 
-    @Test fun `three star rating is distinguishable from unrated`() {
-        val three = FeatureExtractor.buildVector(ctx(), item(userRating = 3), passthroughScaler)
+    // Ratings are stored 1 to 10 (half stars). A mid rating encodes as zero, like no
+    // rating, and only is_rated tells them apart; 5 and 6 sit either side of the centre.
+    @Test fun `middle rating is distinguishable from unrated`() {
+        val five = FeatureExtractor.buildVector(ctx(), item(userRating = 5), passthroughScaler)
+        val six = FeatureExtractor.buildVector(ctx(), item(userRating = 6), passthroughScaler)
         val none = FeatureExtractor.buildVector(ctx(), item(userRating = null), passthroughScaler)
-        assertEquals(three[FeatureSchema.USER_RATING], none[FeatureSchema.USER_RATING], 0.0)
-        assertEquals(1.0, three[FeatureSchema.IS_RATED], 0.0)
+        assertEquals(0.0, (five[FeatureSchema.USER_RATING] + six[FeatureSchema.USER_RATING]) / 2, 1e-12)
+        assertEquals(0.0, none[FeatureSchema.USER_RATING], 0.0)
+        assertEquals(1.0, five[FeatureSchema.IS_RATED], 0.0)
         assertEquals(0.0, none[FeatureSchema.IS_RATED], 0.0)
     }
 
-    @Test fun `five star rating maps to plus one`() {
-        val v = FeatureExtractor.buildVector(ctx(), item(userRating = 5), passthroughScaler)
+    @Test fun `full rating maps to plus one`() {
+        val v = FeatureExtractor.buildVector(ctx(), item(userRating = 10), passthroughScaler)
         assertEquals(1.0, v[FeatureSchema.USER_RATING], 1e-12)
     }
 
-    @Test fun `one star rating maps to minus one`() {
+    @Test fun `lowest rating maps to minus one`() {
         val v = FeatureExtractor.buildVector(ctx(), item(userRating = 1), passthroughScaler)
         assertEquals(-1.0, v[FeatureSchema.USER_RATING], 1e-12)
     }
@@ -207,7 +211,7 @@ class FeatureExtractorTest {
     }
 
     @Test fun `rating relative to uploader is scaled into unit range`() {
-        val v = FeatureExtractor.buildVector(ctx(), item(userRating = 5, uploaderAvgRating = 2.5), passthroughScaler)
+        val v = FeatureExtractor.buildVector(ctx(), item(userRating = 10, uploaderAvgRating = 5.5), passthroughScaler)
         assertEquals(0.5, v[FeatureSchema.RATING_VS_UPLOADER], 1e-12)
     }
 
@@ -223,5 +227,47 @@ class FeatureExtractorTest {
         val off = FeatureExtractor.buildVector(ctx(), item(isDownloadedOffline = false), passthroughScaler)
         assertEquals(1.0, on[FeatureSchema.IS_OFFLINE], 0.0)
         assertEquals(0.0, off[FeatureSchema.IS_OFFLINE], 0.0)
+    }
+
+    @Test fun `screen and output route encode against the speaker baseline`() {
+        val cols = intArrayOf(FeatureSchema.ROUTE_BLUETOOTH, FeatureSchema.ROUTE_WIRED, FeatureSchema.ROUTE_OTHER)
+        for (route in OutputRoute.values()) {
+            val v = FeatureExtractor.buildRawVector(ctx().copy(outputRoute = route, screenOn = true), item())
+            val set = cols.filter { v[it] == 1.0 }
+            assertEquals(if (route == OutputRoute.SPEAKER) 0 else 1, set.size)
+            assertEquals(1.0, v[FeatureSchema.SCREEN_ON], 0.0)
+        }
+        assertEquals(0.0, FeatureExtractor.buildRawVector(ctx(), item())[FeatureSchema.SCREEN_ON], 0.0)
+    }
+
+    @Test fun `listen events are neutral until a track has enough recorded listens`() {
+        val few = ListenEventCounts(forwardSeeks = 5, volumeUps = 4, leaveCount = 2, leaveMean = 0.1, leaveM2 = 0.3)
+        val v = FeatureExtractor.buildRawVector(ctx(), item().copy(listenEvents = few))
+        for (i in FeatureSchema.FORWARD_SEEKS..FeatureSchema.VOLUME_DOWNS) assertEquals(0.0, v[i], 0.0)
+        assertEquals(AdaptiveShuffleConfig.COLD_START_COMPLETION_RATIO, v[FeatureSchema.MEAN_LEAVE_POINT], 0.0)
+        assertEquals(0.0, v[FeatureSchema.LEAVE_POINT_SPREAD], 0.0)
+    }
+
+    @Test fun `listen events are per listen on a log scale`() {
+        val e = ListenEventCounts(
+            forwardSeeks = 4,
+            backwardSeeks = 2,
+            pauseResumes = 1,
+            pauseSkips = 0,
+            volumeUps = 8,
+            volumeDowns = 6,
+            leaveCount = 4,
+            leaveMean = 0.8,
+            leaveM2 = 0.12
+        )
+        val v = FeatureExtractor.buildRawVector(ctx(), item().copy(listenEvents = e))
+        assertEquals(kotlin.math.ln(2.0), v[FeatureSchema.FORWARD_SEEKS], 1e-12)
+        assertEquals(kotlin.math.ln(1.5), v[FeatureSchema.BACKWARD_SEEKS], 1e-12)
+        assertEquals(kotlin.math.ln(1.25), v[FeatureSchema.PAUSE_RESUMES], 1e-12)
+        assertEquals(0.0, v[FeatureSchema.PAUSE_SKIPS], 0.0)
+        assertEquals(kotlin.math.ln(3.0), v[FeatureSchema.VOLUME_UPS], 1e-12)
+        assertEquals(kotlin.math.ln(2.5), v[FeatureSchema.VOLUME_DOWNS], 1e-12)
+        assertEquals(0.8, v[FeatureSchema.MEAN_LEAVE_POINT], 1e-12)
+        assertEquals(0.2, v[FeatureSchema.LEAVE_POINT_SPREAD], 1e-12)
     }
 }

@@ -57,7 +57,20 @@ class CandidateMaterialiser(private val repository: AdaptiveShuffleRepository) {
                 uploaderCompletionRate = uploaderStats.completionRate,
                 uploaderSkipRate = uploaderStats.skipRate,
                 playlistCoMembershipWithPrev = if (streamId == previousStreamId) 0 else facts.coMembership[streamId] ?: 0,
-                isDownloadedOffline = streamId in facts.offline
+                isDownloadedOffline = streamId in facts.offline,
+                listenEvents = stats?.let {
+                    ListenEventCounts(
+                        forwardSeeks = it.forwardSeeks,
+                        backwardSeeks = it.backwardSeeks,
+                        pauseResumes = it.pauseResumes,
+                        pauseSkips = it.pauseSkips,
+                        volumeUps = it.volumeUps,
+                        volumeDowns = it.volumeDowns,
+                        leaveCount = it.leaveCount,
+                        leaveMean = it.leaveMean,
+                        leaveM2 = it.leaveM2
+                    )
+                } ?: ListenEventCounts.NONE
             )
         }
     }
