@@ -116,6 +116,7 @@ import org.schabi.newpipe.player.playqueue.SinglePlayQueue;
 import org.schabi.newpipe.player.mediasource.FailedMediaSource;
 import org.schabi.newpipe.player.playback.ListenJudge;
 import org.schabi.newpipe.player.playback.PlaybackFailurePolicy;
+import org.schabi.newpipe.player.playback.StreamRefreshPolicy;
 import org.schabi.newpipe.player.resolver.AudioPlaybackResolver;
 import org.schabi.newpipe.player.resolver.VideoPlaybackResolver;
 import org.schabi.newpipe.player.resolver.VideoPlaybackResolver.SourceType;
@@ -127,6 +128,7 @@ import org.schabi.newpipe.player.ui.PopupPlayerUi;
 import org.schabi.newpipe.player.ui.VideoPlayerUi;
 import org.schabi.newpipe.util.DependentPreferenceHelper;
 import org.schabi.newpipe.util.ExtractorHelper;
+import org.schabi.newpipe.util.InfoCache;
 import org.schabi.newpipe.util.ListHelper;
 import org.schabi.newpipe.util.NavigationHelper;
 import org.schabi.newpipe.util.SerializedCache;
@@ -290,6 +292,11 @@ public final class Player implements PlaybackListener, Listener {
     @Nullable
     private PlayQueueItem userQueuedNext = null;
     private final PlaybackFailurePolicy failurePolicy = new PlaybackFailurePolicy();
+    private final StreamRefreshPolicy streamRefreshPolicy = new StreamRefreshPolicy();
+    // The item being reloaded in place after a failure. Replacing the player's sources
+    // can report it as removed, which is not the listen ending.
+    @Nullable
+    private PlayQueueItem reloadingItem = null;
 
     /*//////////////////////////////////////////////////////////////////////////
     // UIs, listeners and disposables
@@ -1299,6 +1306,7 @@ public final class Player implements PlaybackListener, Listener {
         recordPlayEvent();
         recordPauseOutcome(true);
         currentListenHasPlayed = true;
+        reloadingItem = null;
         failurePolicy.onPlaybackStarted();
 
         UIs.call(PlayerUi::onPlaying);
@@ -1567,6 +1575,8 @@ public final class Player implements PlaybackListener, Listener {
         switch (failurePolicy.onFailure(key)) {
             case SKIP:
                 if (playQueue != null) {
+                    // A failure, not the user moving on: leaving it is no verdict on it.
+                    currentListenUnjudged = true;
                     playQueue.error();
                 }
                 break;
@@ -1577,10 +1587,50 @@ public final class Player implements PlaybackListener, Listener {
                 break;
             case RETRY:
             default:
-                setRecovery();
-                reloadPlayQueueManager();
+                reloadInPlace(failing);
                 break;
         }
+    }
+
+    /**
+     * Extracts the current item again, dropping its cached stream info so the reload gets
+     * fresh stream URLs, and resumes it where it failed. See {@link StreamRefreshPolicy}.
+     *
+     * @return whether a refresh was started
+     */
+    private boolean refreshStreamInPlace() {
+        final PlayQueueItem item = playQueue == null ? null : playQueue.getItem();
+        if (item == null || exoPlayerIsNull() || !streamRefreshPolicy.shouldRefresh(
+                item.getServiceId() + "|" + item.getUrl(),
+                simpleExoPlayer.getCurrentPosition())) {
+            return false;
+        }
+        InfoCache.getInstance().removeInfo(item.getServiceId(), item.getUrl(),
+                InfoCache.Type.STREAM);
+        reloadInPlace(item);
+        return true;
+    }
+
+    private void reloadInPlace(@Nullable final PlayQueueItem item) {
+        reloadingItem = item;
+        setRecovery();
+        reloadPlayQueueManager();
+    }
+
+    /**
+     * Moves past an item whose source failed. If it had played, the failure came part way
+     * through: the item is not unplayable, and leaving it is no verdict on it.
+     */
+    private void skipFailedItem() {
+        if (exoPlayerIsNull() || playQueue == null) {
+            return;
+        }
+        if (currentListenHasPlayed) {
+            currentListenUnjudged = true;
+        } else {
+            markAdaptiveUnplayable(playQueue.getItem());
+        }
+        playQueue.error();
     }
     //endregion
 
@@ -1871,8 +1921,11 @@ public final class Player implements PlaybackListener, Listener {
                 }
             case DISCONTINUITY_REASON_SEEK_ADJUSTMENT:
             case DISCONTINUITY_REASON_INTERNAL:
-                if (oldPosition.mediaItemIndex != newPosition.mediaItemIndex
-                        || discontinuityReason == DISCONTINUITY_REASON_REMOVE) {
+                final boolean reloadedInPlace = discontinuityReason
+                        == DISCONTINUITY_REASON_REMOVE && reloadingItem != null
+                        && playQueue != null && playQueue.getItem() == reloadingItem;
+                if (!reloadedInPlace && (oldPosition.mediaItemIndex != newPosition.mediaItemIndex
+                        || discontinuityReason == DISCONTINUITY_REASON_REMOVE)) {
                     // Whatever moved playback on (a natural end, next, a tap in the queue,
                     // previous, an error skip), this is where the old track's listen closes,
                     // at the position it actually reached. The player's current position
@@ -1974,8 +2027,19 @@ public final class Player implements PlaybackListener, Listener {
                 // switching to the buffering state
                 onBuffering();
                 break;
-            case ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE:
             case ERROR_CODE_IO_BAD_HTTP_STATUS:
+                // A stream that played and then stopped being served (YouTube's stale URLs
+                // and tokens, typically about a minute in) plays on after a fresh
+                // extraction; only one that never played is a broken source.
+                if (currentListenHasPlayed && refreshStreamInPlace()) {
+                    // Handled: playback resumes, so no error notification.
+                    isCatchableException = true;
+                    onBuffering();
+                    break;
+                }
+                skipFailedItem();
+                break;
+            case ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE:
             case ERROR_CODE_IO_FILE_NOT_FOUND:
             case ERROR_CODE_IO_NO_PERMISSION:
             case ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED:
@@ -2911,6 +2975,7 @@ public final class Player implements PlaybackListener, Listener {
         currentListenClosed = false;
         currentListenHasPlayed = false;
         pauseOutcomePending = false;
+        reloadingItem = null;
         // Shuffle may be turned on while the first track is still loading; keep the grace
         // for that item when its metadata arrives, and drop it for any other.
         if (playQueue == null || playQueue.getItem() != unjudgedItem) {
