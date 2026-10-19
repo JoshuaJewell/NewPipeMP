@@ -37,6 +37,8 @@ import java.util.Map;
  *       when absent, to preserve pre-acetate behaviour). Opus is routed
  *       through {@link OpusTagEditor} because JAudioTagger 3.0.1 does not
  *       recognise the OpusHead identification packet.
+ * [6] = source URL (optional). Written as the comment, and in Opus also as PURL, as
+ *       yt-dlp does, so the file can be matched back to its stream on other devices.
  */
 class AudioMetadataTagging extends Postprocessing {
     private static final String TAG = "AudioMetadataTagging";
@@ -57,6 +59,10 @@ class AudioMetadataTagging extends Postprocessing {
         String title = getArgumentAt(3, null);
         String thumbnailUrl = getArgumentAt(4, null);
         String container = getArgumentAt(5, "m4a");
+        String sourceUrl = getArgumentAt(6, null);
+        if (sourceUrl != null && sourceUrl.isEmpty()) {
+            sourceUrl = null;
+        }
 
         Log.d(TAG, "Received arguments - track: " + trackNumber + ", album: " + albumName
             + ", artist: " + artistName + ", title: " + title + ", thumbnail: " + thumbnailUrl
@@ -93,10 +99,10 @@ class AudioMetadataTagging extends Postprocessing {
 
             if ("opus".equalsIgnoreCase(container)) {
                 tagOpus(tempAudioFile, trackNumber, albumName, artistName, title,
-                        tempThumbnailFile);
+                        tempThumbnailFile, sourceUrl);
             } else {
                 tagViaJAudioTagger(tempAudioFile, trackNumber, albumName, artistName, title,
-                        tempThumbnailFile);
+                        tempThumbnailFile, sourceUrl);
             }
 
             Log.d(TAG, String.format(
@@ -142,7 +148,8 @@ class AudioMetadataTagging extends Postprocessing {
      * via {@link OpusTagEditor}, bypassing JAudioTagger.
      */
     private void tagOpus(File audio, String trackNumber, String albumName,
-                         String artistName, String title, File thumbnailFile) throws IOException {
+                         String artistName, String title, File thumbnailFile,
+                         String sourceUrl) throws IOException {
         Map<String, String> comments = new LinkedHashMap<>();
         if (title != null) {
             comments.put("TITLE", title);
@@ -155,6 +162,10 @@ class AudioMetadataTagging extends Postprocessing {
         }
         if (trackNumber != null) {
             comments.put("TRACKNUMBER", trackNumber);
+        }
+        if (sourceUrl != null) {
+            comments.put("PURL", sourceUrl);
+            comments.put("COMMENT", sourceUrl);
         }
 
         byte[] artworkBytes = null;
@@ -172,7 +183,8 @@ class AudioMetadataTagging extends Postprocessing {
      * M4A). Opus must not reach this path; see {@link #tagOpus}.
      */
     private void tagViaJAudioTagger(File audio, String trackNumber, String albumName,
-                                     String artistName, String title, File thumbnailFile)
+                                     String artistName, String title, File thumbnailFile,
+                                     String sourceUrl)
             throws Exception {
         AudioFile audioFile = AudioFileIO.read(audio);
         Tag tag = audioFile.getTagOrCreateAndSetDefault();
@@ -187,6 +199,9 @@ class AudioMetadataTagging extends Postprocessing {
         }
         if (title != null) {
             tag.setField(FieldKey.TITLE, title);
+        }
+        if (sourceUrl != null) {
+            tag.setField(FieldKey.COMMENT, sourceUrl);
         }
 
         if (thumbnailFile != null && thumbnailFile.exists()) {

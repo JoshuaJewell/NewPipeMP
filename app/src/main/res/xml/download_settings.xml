@@ -79,4 +79,11 @@
         app:singleLineTitle="false"
         app:iconSpaceReserved="false" />
 
+    <Preference
+        android:key="@string/library_download_key"
+        android:summary="@string/library_download_summary"
+        android:title="@string/library_download_title"
+        app:singleLineTitle="false"
+        app:iconSpaceReserved="false" />
+
 </PreferenceScreen>

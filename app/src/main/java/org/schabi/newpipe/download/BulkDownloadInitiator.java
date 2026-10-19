@@ -511,7 +511,8 @@ public final class BulkDownloadInitiator {
                     artist,
                     title,
                     streamThumbnailUrl != null ? streamThumbnailUrl : "",
-                    containerKindFor(format)
+                    containerKindFor(format),
+                    streamItem.getUrl()
                 };
             } else {
                 psArgs = null;
@@ -536,13 +537,16 @@ public final class BulkDownloadInitiator {
         // Generate numbered filename: "01 - Video Title.ext"
         // Use streamItem.getName() for correct title, not streamInfo which may be corrupted
         final String cleanTitle = FilenameUtils.createFilename(context, streamItem.getName());
-        final String ext = ((org.schabi.newpipe.extractor.stream.Stream) selectedStream)
-            .getFormat().getSuffix();
+        final MediaFormat selectedFormat =
+            ((org.schabi.newpipe.extractor.stream.Stream) selectedStream).getFormat();
+        // Opus is demuxed from WebM into Ogg, so name it as DownloadDialog does; its
+        // format's suffix is the WebM one, which tag and rating code do not recognise.
+        final boolean isOpus = config.downloadAudio && selectedFormat == MediaFormat.WEBMA_OPUS;
+        final String ext = isOpus ? "opus" : selectedFormat.getSuffix();
         final String paddedPosition = String.format("%0" + String.valueOf(totalCount).length()
             + "d", position);
         final String filename = paddedPosition + " - " + cleanTitle + "." + ext;
-        final String mimeType = ((org.schabi.newpipe.extractor.stream.Stream) selectedStream)
-            .getFormat().getMimeType();
+        final String mimeType = isOpus ? "audio/ogg" : selectedFormat.getMimeType();
 
         // Create storage for the file
         final StoredFileHelper storage;
@@ -648,7 +652,7 @@ public final class BulkDownloadInitiator {
     /**
      * Result of creating a playlist subdirectory.
      */
-    private static class SubdirectoryResult {
+    static class SubdirectoryResult {
         final StoredDirectoryHelper directoryHelper; // For file:// paths
         final DocumentFile safSubdirectory; // For SAF paths
 
@@ -670,7 +674,7 @@ public final class BulkDownloadInitiator {
      * @return SubdirectoryResult with either directoryHelper or safSubdirectory set
      * @throws IOException if subdirectory creation fails
      */
-    private static SubdirectoryResult createPlaylistSubdirectory(
+    static SubdirectoryResult createPlaylistSubdirectory(
             @NonNull final Context context,
             @NonNull final StoredDirectoryHelper mainStorage,
             @NonNull final String playlistName) throws IOException {
@@ -753,7 +757,7 @@ public final class BulkDownloadInitiator {
      * @param artistName the original artist/uploader name
      * @return cleaned artist name, or empty string if input is null
      */
-    private static String cleanArtistName(final String artistName) {
+    static String cleanArtistName(final String artistName) {
         if (artistName == null) {
             return "";
         }
@@ -777,7 +781,7 @@ public final class BulkDownloadInitiator {
      * @param format the chosen audio {@link MediaFormat}, or null
      * @return one of "opus", "flac", "mp3", or "m4a" (the default fallback)
      */
-    private static String containerKindFor(final MediaFormat format) {
+    static String containerKindFor(final MediaFormat format) {
         if (format == null) {
             return "m4a";
         }
@@ -803,7 +807,7 @@ public final class BulkDownloadInitiator {
      * @param thumbnails list of thumbnail images
      * @return URL of the highest quality thumbnail, or null if list is empty
      */
-    private static String selectHighestQualityThumbnail(@NonNull final List<Image> thumbnails) {
+    static String selectHighestQualityThumbnail(@NonNull final List<Image> thumbnails) {
         if (thumbnails.isEmpty()) {
             return null;
         }

@@ -34,6 +34,20 @@ interface PlaylistStreamDAO : BasicDAO<PlaylistStreamEntity> {
     @Query("DELETE FROM playlist_stream_join WHERE playlist_id = :playlistId")
     fun deleteBatch(playlistId: Long)
 
+    // Every entry of every local playlist, in playlist order, for the library download.
+    @Query(
+        """
+        SELECT p.uid AS playlistId, p.name AS playlistName, s.service_id AS serviceId,
+               s.url AS url, s.title AS title, s.uploader AS uploader,
+               s.duration AS duration, s.thumbnail_url AS thumbnailUrl
+        FROM playlist_stream_join psj
+        INNER JOIN playlists p ON p.uid = psj.playlist_id
+        INNER JOIN streams s ON s.uid = psj.stream_id
+        ORDER BY p.display_index, p.uid, psj.join_index
+        """
+    )
+    fun getLibraryEntriesBlocking(): List<LibraryEntryRow>
+
     @Query("SELECT COALESCE(MAX(join_index), -1) FROM playlist_stream_join WHERE playlist_id = :playlistId")
     fun getMaximumIndexOf(playlistId: Long): Flowable<Int>
 
@@ -134,3 +148,14 @@ interface PlaylistStreamDAO : BasicDAO<PlaylistStreamEntity> {
     )
     fun getPlaylistDuplicatesMetadata(streamUrl: String): Flowable<MutableList<PlaylistDuplicatesEntry>>
 }
+
+data class LibraryEntryRow(
+    val playlistId: Long,
+    val playlistName: String?,
+    val serviceId: Int,
+    val url: String,
+    val title: String,
+    val uploader: String,
+    val duration: Long,
+    val thumbnailUrl: String?
+)

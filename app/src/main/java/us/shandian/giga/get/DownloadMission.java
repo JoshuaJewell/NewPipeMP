@@ -135,9 +135,11 @@ public class DownloadMission extends Mission {
     public MissionRecoveryInfo[] recoveryInfo;
 
     /**
-     * Optional playlist metadata for tagging audio files
+     * Optional playlist metadata for tagging audio files. Not transient: it carries the
+     * stream URL the offline file mapping is saved under, which was lost when a pending
+     * download was restored after the app restarted. Old saved missions read it as null.
      */
-    public transient PlaylistMetadata playlistMetadata;
+    public PlaylistMetadata playlistMetadata;
 
     /**
      * Whether to create offline file mapping after download completes

@@ -21,12 +21,16 @@ import androidx.preference.SwitchPreferenceCompat;
 import com.nononsenseapps.filepicker.Utils;
 
 import org.schabi.newpipe.R;
+import org.schabi.newpipe.download.LibraryDownloadJob;
 import org.schabi.newpipe.streams.io.NoFileManagerSafeGuard;
 import org.schabi.newpipe.streams.io.StoredDirectoryHelper;
 import org.schabi.newpipe.util.FilePickerActivityHelper;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Locale;
+
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
 
 public class DownloadSettingsFragment extends BasePreferenceFragment {
     public static final boolean IGNORE_RELEASE_ON_OLD_PATH = true;
@@ -39,6 +43,7 @@ public class DownloadSettingsFragment extends BasePreferenceFragment {
     private Preference prefStorageAsk;
 
     private Context ctx;
+    private final CompositeDisposable libraryDisposables = new CompositeDisposable();
     private final ActivityResultLauncher<Intent> requestDownloadVideoPathLauncher =
             registerForActivityResult(
                     new StartActivityForResult(), this::requestDownloadVideoPathResult);
@@ -182,11 +187,117 @@ public class DownloadSettingsFragment extends BasePreferenceFragment {
             launchDirectoryPicker(requestDownloadVideoPathLauncher);
         } else if (key.equals(downloadPathAudioPreference)) {
             launchDirectoryPicker(requestDownloadAudioPathLauncher);
+        } else if (key.equals(getString(R.string.library_download_key))) {
+            onLibraryDownloadClicked();
         } else {
             return super.onPreferenceTreeClick(preference);
         }
 
         return true;
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        updateLibraryDownloadSummary();
+    }
+
+    @Override
+    public void onDestroy() {
+        libraryDisposables.clear();
+        super.onDestroy();
+    }
+
+    private void updateLibraryDownloadSummary() {
+        final Preference pref = findPreference(getString(R.string.library_download_key));
+        if (pref == null) {
+            return;
+        }
+        final LibraryDownloadJob.State state = LibraryDownloadJob.savedState(ctx);
+        pref.setSummary(state == null ? getString(R.string.library_download_summary)
+                : LibraryDownloadJob.describe(state));
+    }
+
+    private void onLibraryDownloadClicked() {
+        final LibraryDownloadJob.State state = LibraryDownloadJob.savedState(ctx);
+        if (LibraryDownloadJob.isRunning()) {
+            new AlertDialog.Builder(ctx)
+                    .setTitle(R.string.library_download_title)
+                    .setMessage(state == null ? "" : LibraryDownloadJob.describe(state))
+                    .setPositiveButton(R.string.library_download_pause, (d, w) -> {
+                        LibraryDownloadJob.pause(
+                                getString(R.string.library_download_paused_by_user));
+                        updateLibraryDownloadSummary();
+                    })
+                    .setNegativeButton(R.string.ok, null)
+                    .show();
+            return;
+        }
+        if (state != null) {
+            final int left = state.count(LibraryDownloadJob.Status.PENDING)
+                    + state.count(LibraryDownloadJob.Status.ACTIVE);
+            final boolean onlyFailedLeft = left == 0
+                    && state.count(LibraryDownloadJob.Status.FAILED) > 0;
+            final AlertDialog.Builder builder = new AlertDialog.Builder(ctx)
+                    .setTitle(R.string.library_download_title)
+                    .setMessage(LibraryDownloadJob.describe(state))
+                    .setNeutralButton(R.string.library_download_start_over, (d, w) -> {
+                        LibraryDownloadJob.discard(ctx);
+                        planLibraryDownload();
+                    })
+                    .setNegativeButton(R.string.cancel, null);
+            if (left > 0 || onlyFailedLeft) {
+                builder.setPositiveButton(onlyFailedLeft ? R.string.library_download_retry_failed
+                        : R.string.library_download_resume, (d, w) -> {
+                    LibraryDownloadJob.resume(ctx, true);
+                    updateLibraryDownloadSummary();
+                });
+            }
+            builder.show();
+            return;
+        }
+        planLibraryDownload();
+    }
+
+    private void planLibraryDownload() {
+        final AlertDialog progress = new AlertDialog.Builder(ctx)
+                .setMessage(R.string.library_download_collecting)
+                .setCancelable(false)
+                .show();
+        libraryDisposables.add(LibraryDownloadJob.prepare(ctx).subscribe(prepared -> {
+            progress.dismiss();
+            confirmLibraryDownload(prepared);
+        }, error -> {
+            progress.dismiss();
+            new AlertDialog.Builder(ctx)
+                    .setTitle(R.string.library_download_title)
+                    .setMessage(getString(R.string.library_download_error, error.getMessage()))
+                    .setPositiveButton(R.string.ok, null)
+                    .show();
+        }));
+    }
+
+    private void confirmLibraryDownload(final LibraryDownloadJob.Prepared prepared) {
+        final int playlists = prepared.getLocalPlaylists() + prepared.getRemotePlaylists();
+        String message = String.format(Locale.getDefault(),
+                getString(R.string.library_download_confirm),
+                playlists, prepared.getLocalPlaylists(), prepared.getRemotePlaylists(),
+                prepared.getPlan().getTotalEntries(), prepared.getPlan().getTracks().size(),
+                prepared.getPlan().getAlreadyHave().size(),
+                prepared.getPlan().getToDownload().size());
+        if (!prepared.getUnloadedPlaylists().isEmpty()) {
+            message += getString(R.string.library_download_unloaded,
+                    String.join(", ", prepared.getUnloadedPlaylists()));
+        }
+        new AlertDialog.Builder(ctx)
+                .setTitle(R.string.library_download_title)
+                .setMessage(message)
+                .setPositiveButton(R.string.library_download_start, (d, w) -> {
+                    LibraryDownloadJob.start(ctx, prepared);
+                    updateLibraryDownloadSummary();
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
     }
 
     private void launchDirectoryPicker(final ActivityResultLauncher<Intent> launcher) {
