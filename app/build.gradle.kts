@@ -144,6 +144,17 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+// Every variant's KSP run exports the Room schema to the same file. Run in parallel, one
+// can read it while another is rewriting it (an empty-JSON failure in kspDebugKotlin
+// while kspContinuousKotlin ran), so make the runs take turns.
+tasks.matching { it.name.startsWith("ksp") && it.name.endsWith("Kotlin") }.configureEach {
+    mustRunAfter(
+        tasks.matching { other ->
+            other.name.startsWith("ksp") && other.name.endsWith("Kotlin") && other.name < name
+        }
+    )
+}
+
 // Custom dependency configuration for ktlint
 val ktlint by configurations.creating
 
