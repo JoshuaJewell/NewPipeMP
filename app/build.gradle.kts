@@ -147,12 +147,11 @@ ksp {
 // Every variant's KSP run exports the Room schema to the same file. Run in parallel, one
 // can read it while another is rewriting it (an empty-JSON failure in kspDebugKotlin
 // while kspContinuousKotlin ran), so make the runs take turns.
-tasks.matching { it.name.startsWith("ksp") && it.name.endsWith("Kotlin") }.configureEach {
-    mustRunAfter(
-        tasks.matching { other ->
-            other.name.startsWith("ksp") && other.name.endsWith("Kotlin") && other.name < name
-        }
-    )
+// Only the app variants' own KSP tasks export it, and none depends on another; test
+// variants' KSP tasks depend on the app's classes, so ordering them would make a cycle.
+fun isAppKspTask(name: String) = name.startsWith("ksp") && name.endsWith("Kotlin") && "Test" !in name
+tasks.matching { isAppKspTask(it.name) }.configureEach {
+    mustRunAfter(tasks.matching { other -> isAppKspTask(other.name) && other.name < name })
 }
 
 // Custom dependency configuration for ktlint
