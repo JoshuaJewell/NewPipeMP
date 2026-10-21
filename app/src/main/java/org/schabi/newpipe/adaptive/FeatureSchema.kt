@@ -105,8 +105,11 @@ object FeatureSchema {
 
     // Stable SHA-256 over the feature name list. Any reorder, rename or addition
     // changes this hash and triggers a model rebuild from raw inputs on launch.
+    // The model's form is part of it: a stored model of another form is rebuilt too.
+    const val MODEL_FORM: String = "hybrid-1"
+
     val schemaHash: String by lazy {
-        val payload = names.joinToString("|").toByteArray()
+        val payload = (names.joinToString("|") + "|model:" + MODEL_FORM).toByteArray()
         val digest = MessageDigest.getInstance("SHA-256").digest(payload)
         digest.joinToString("") { "%02x".format(it) }
     }

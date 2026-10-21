@@ -54,7 +54,10 @@ class FeatureScalerTest {
         s.observe(doubleArrayOf(3.0))
         s.observe(doubleArrayOf(3.0))
         assertEquals(0.0, s.transform(doubleArrayOf(3.0))[0], 0.0)
-        assertEquals(0.5 / FeatureScaler.MIN_STD, s.transform(doubleArrayOf(3.5))[0], 1e-12)
+        // 0.5 / MIN_STD would be 500 standard deviations, enough to pin a weight for
+        // thousands of updates; it is clipped.
+        assertEquals(FeatureScaler.MAX_Z, s.transform(doubleArrayOf(3.5))[0], 1e-12)
+        assertEquals(-FeatureScaler.MAX_Z, s.transform(doubleArrayOf(2.0))[0], 1e-12)
     }
 
     @Test fun `serialisation round trip preserves running statistics`() {

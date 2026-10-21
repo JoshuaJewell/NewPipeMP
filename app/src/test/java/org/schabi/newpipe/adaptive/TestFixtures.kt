@@ -79,6 +79,7 @@ internal class InMemoryStore : AdaptiveShuffleStore {
     override fun getRecent(limit: Int) = events.values.sortedByDescending { it.chosenAt }.take(limit)
     override fun getRecentResolved(limit: Int) = events.values.filter { it.resolved }.sortedByDescending { it.chosenAt }.take(limit)
     override fun getAllResolvedOrdered() = events.values.filter { it.resolved }.sortedBy { it.chosenAt }
+    override fun countResolvedForStreamBetween(streamId: Long, fromMillis: Long, toMillis: Long) = events.values.count { it.streamId == streamId && it.resolved && it.chosenAt >= fromMillis && it.chosenAt < toMillis }
     override fun getStreamTitle(streamId: Long): String? = "track $streamId"
 }
 

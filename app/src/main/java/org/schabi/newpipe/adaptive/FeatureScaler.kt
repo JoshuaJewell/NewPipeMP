@@ -42,7 +42,11 @@ class FeatureScaler private constructor(
             // zero, and dividing by it would blow the next different value up by orders of
             // magnitude, enough to wreck the model's matrix in a single update.
             val std = maxOf(sqrt(variance), MIN_STD)
-            out[idx] = (out[idx] - means[k]) / std
+            // Clipped as well: a value far outside everything seen so far (the scaler has
+            // seen only near-identical values, early in a rebuild or a fresh install)
+            // would otherwise come out hundreds of standard deviations away, and one such
+            // update pins its weight for thousands of events.
+            out[idx] = ((out[idx] - means[k]) / std).coerceIn(-MAX_Z, MAX_Z)
         }
         return out
     }
@@ -67,6 +71,7 @@ class FeatureScaler private constructor(
         // real spread untouched, large enough that one update cannot push the model's
         // matrix past what double precision can invert (it used to be 1e-8, which could).
         const val MIN_STD: Double = 1e-3
+        const val MAX_Z: Double = 5.0
 
         fun fromByteArray(bytes: ByteArray): FeatureScaler {
             val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)

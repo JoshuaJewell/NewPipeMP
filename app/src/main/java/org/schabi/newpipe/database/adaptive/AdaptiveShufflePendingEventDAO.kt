@@ -78,6 +78,14 @@ abstract class AdaptiveShufflePendingEventDAO {
     abstract fun countResolved(): Maybe<Int>
 
     @Query(
+        """
+        SELECT COUNT(*) FROM adaptive_shuffle_pending_events
+        WHERE stream_id = :streamId AND resolved = 1 AND chosen_at >= :fromMillis AND chosen_at < :toMillis
+        """
+    )
+    abstract fun countResolvedForStreamBetween(streamId: Long, fromMillis: Long, toMillis: Long): Int
+
+    @Query(
         "SELECT id FROM adaptive_shuffle_pending_events WHERE stream_id = :streamId AND resolved = 0 ORDER BY chosen_at DESC LIMIT 1"
     )
     abstract fun findLatestUnresolvedForStream(streamId: Long): Maybe<Long>

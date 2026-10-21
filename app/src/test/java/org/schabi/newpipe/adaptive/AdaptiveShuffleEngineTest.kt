@@ -224,4 +224,81 @@ class AdaptiveShuffleEngineTest {
         assertFalse(e.chooseNext(listOf(fixtureItem(1)), fixtureContext()).baseline)
         assertFalse(RawInputsCodec.decode(store.events.values.single().rawInputsBlob).baseline)
     }
+
+    private fun offsetOf(e: AdaptiveShuffleEngine, streamId: Long): Double = e.trackOffsets(limit = 100, minListens = 0.0).let { (liked, disliked) ->
+        (liked + disliked).firstOrNull { it.streamId == streamId }?.offset ?: 0.0
+    }
+
+    @Test fun `a user pick trains at reduced weight and is in neither comparison arm`() {
+        val store = InMemoryStore()
+        val e = engine(store)
+        val pick = e.recordUserPick(fixtureItem(9), fixtureContext(), displaced = null)
+        assertEquals(Chooser.USER, pick.chooser)
+        e.captureSnapshot(9, 0)
+        e.resolveOutcome(9, RawInputsCodec.Outcome(1.0, 0))
+        assertEquals(1L, e.numEvents())
+        assertEquals(Chooser.USER, RawInputsCodec.decode(store.events.values.single().rawInputsBlob).chooser)
+        val report = e.armComparison()
+        assertNull(report.model)
+        assertNull(report.baseline)
+        // Half weight: the offset moves less than after a model pick with the same outcome.
+        val other = engine()
+        decideAndResolve(other, fixtureItem(9), 1.0)
+        assertTrue(offsetOf(e, 9) < offsetOf(other, 9))
+        assertTrue(offsetOf(e, 9) > 0.0)
+    }
+
+    @Test fun `choosing a track over the model's pick teaches the difference between them`() {
+        // Long tracks displaced by short ones the listener then finishes.
+        fun run(ratio: Double): Double {
+            val e = engine()
+            repeat(30) { i ->
+                val chosen = fixtureItem(1000L + i, durationSeconds = 150L)
+                val displaced = fixtureItem(2000L + i, durationSeconds = 600L)
+                // Warm the scaler with both lengths.
+                decideAndResolve(e, fixtureItem(3000L + i, durationSeconds = if (i % 2 == 0) 150L else 600L), 0.5)
+                e.recordUserPick(chosen, fixtureContext(), displaced)
+                e.captureSnapshot(chosen.streamId, 0)
+                e.resolveOutcome(chosen.streamId, RawInputsCodec.Outcome(ratio, 0))
+            }
+            return e.theta()[FeatureSchema.LOG_DURATION]
+        }
+        val listened = run(1.0)
+        val skippedAtOnce = run(0.05)
+        // Preferring short tracks pushes the duration weight down; an immediate skip of
+        // the chosen track is not taken as a preference at all.
+        assertTrue("listened $listened vs skipped $skippedAtOnce", listened < skippedAtOnce - 0.05)
+    }
+
+    @Test fun `listens of one track within a day count for less each time`() {
+        fun offsetAfterTen(gapMillis: Long): Double {
+            val clock = FakeClock()
+            val e = engine(clock = clock)
+            repeat(10) {
+                clock.now += gapMillis
+                decideAndResolve(e, fixtureItem(5), 1.0)
+                // Something else in between, so the shared weights are not all this track.
+                decideAndResolve(e, fixtureItem(100L + it), 0.1)
+            }
+            return offsetOf(e, 5)
+        }
+        val sameAfternoon = offsetAfterTen(20L * 60L * 1000L)
+        val tenDays = offsetAfterTen(2L * AdaptiveShuffleConfig.REPEAT_WINDOW_MILLIS)
+        assertTrue("same afternoon $sameAfternoon vs ten days $tenDays", sameAfternoon < tenDays)
+    }
+
+    @Test fun `rebuild replays user picks, preferences and repeat weights without losing events`() {
+        val store = InMemoryStore()
+        val e = engine(store)
+        repeat(6) { i ->
+            decideAndResolve(e, fixtureItem(i.toLong()), 0.9)
+            e.recordUserPick(fixtureItem(50L + i), fixtureContext(), fixtureItem(60L + i, durationSeconds = 500L))
+            e.captureSnapshot(50L + i, 0)
+            e.resolveOutcome(50L + i, RawInputsCodec.Outcome(1.0, 0, partialRewinds = 1, returned = i == 0))
+        }
+        val report = e.rebuildFromPending()
+        assertEquals(12, report.ingested)
+        assertEquals(12, report.fromStoredOutcome)
+        assertTrue(offsetOf(e, 50) > 0.0)
+    }
 }

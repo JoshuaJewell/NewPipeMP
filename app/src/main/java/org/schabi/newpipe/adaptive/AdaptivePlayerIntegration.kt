@@ -34,7 +34,7 @@ class AdaptivePlayerIntegration(
     private var lastActivityAt = 0L
 
     private val resolutionDecisionTimestamps = java.util.concurrent.ConcurrentHashMap<Long, Long>()
-    private val recentScores = ArrayDeque<LinUCB.Score>()
+    private val recentScores = ArrayDeque<HybridLinUCB.Score>()
     private var lastGreedy: Boolean = true
     private var sessionPosition: Int = 0
     private var previousUploader: String? = null
@@ -268,7 +268,7 @@ class AdaptivePlayerIntegration(
         lastDecision = null
     }
 
-    private fun rememberScore(score: LinUCB.Score, greedy: Boolean) {
+    private fun rememberScore(score: HybridLinUCB.Score, greedy: Boolean) {
         recentScores.addLast(score)
         while (recentScores.size > AdaptiveShuffleConfig.CONFIDENCE_NORMALISATION_WINDOW) {
             recentScores.removeFirst()

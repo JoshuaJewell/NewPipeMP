@@ -9,6 +9,7 @@ import java.util.Random
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.ln
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -43,7 +44,9 @@ internal object ReplayHarness {
         val continuousReward: Boolean,
         // Fix 4: Thompson sampling. Off uses UCB.
         val thompson: Boolean,
-        val discount: Double = 1.0
+        val discount: Double = 1.0,
+        // Spec section 6.6: per-track offsets on top of the shared weights.
+        val hybrid: Boolean = false
     )
 
     val STAGES: List<Stage> = listOf(
@@ -63,8 +66,42 @@ internal object ReplayHarness {
             true,
             false,
             AdaptiveShuffleConfig.DISCOUNT_GAMMA
+        ),
+        Stage(
+            "+hybrid (per-track offsets)",
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            AdaptiveShuffleConfig.DISCOUNT_GAMMA,
+            hybrid = true
         )
     )
+
+    // The two model forms behind one face, so every stage replays the same way.
+    private class ReplayModel(dimension: Int, discount: Double, hybrid: Boolean) {
+        private val linear = if (hybrid) null else LinUCB(dimension, discount = discount)
+        private val withOffsets = if (hybrid) HybridLinUCB(dimension, discount = discount) else null
+
+        fun predicted(x: DoubleArray, track: Long): Double = linear?.score(x)?.predictedReward ?: withOffsets!!.score(x, track).predictedReward
+
+        fun total(x: DoubleArray, track: Long): Double = linear?.score(x)?.total ?: withOffsets!!.score(x, track).total
+
+        fun draw(rng: Random): (DoubleArray, Long) -> Double {
+            linear?.let { m ->
+                val theta = m.sampleTheta(rng)
+                return { x, _ -> LinUCB.dot(theta, x) }
+            }
+            val d = withOffsets!!.sample(rng)
+            return { x, track -> d.value(x, track) }
+        }
+
+        fun update(x: DoubleArray, reward: Double, track: Long) {
+            linear?.update(x, reward) ?: withOffsets!!.update(x, reward, track)
+        }
+    }
 
     data class Event(
         val chosenAt: Long,
@@ -94,7 +131,7 @@ internal object ReplayHarness {
     ): Report {
         val sorted = events.sortedBy { it.chosenAt }
         val features = if (stage.schemaV3) V3 else LegacyV2
-        val model = LinUCB(features.dimension, discount = stage.discount)
+        val model = ReplayModel(features.dimension, stage.discount, stage.hybrid)
         val scaler = FeatureScaler(features.scaledIndices)
         val rng = Random(seed)
 
@@ -133,11 +170,11 @@ internal object ReplayHarness {
                 RewardCalculator.legacyStepReward(e.completionRatio, e.restartDelta)
             }
             if (i >= warmUp) {
-                predicted += model.score(x).predictedReward
+                predicted += model.predicted(x, e.item.streamId)
                 rewards += reward
                 ratios += e.completionRatio
             }
-            model.update(x, reward)
+            model.update(x, reward, e.item.streamId)
             scaler.observe(if (stage.scalerObservesRaw) raw else x)
             lastPlayedAt[e.item.streamId] = e.chosenAt
         }
@@ -156,7 +193,7 @@ internal object ReplayHarness {
     private fun simulatePick(
         stage: Stage,
         features: FeatureSet,
-        model: LinUCB,
+        model: ReplayModel,
         scaler: FeatureScaler,
         loggedContext: DecisionContext,
         now: Long,
@@ -190,10 +227,10 @@ internal object ReplayHarness {
         }
         val vectors = candidates.map { scaler.transform(features.raw(context, it)) }
         val chosen = if (stage.thompson) {
-            val theta = model.sampleTheta(rng)
-            vectors.indices.maxByOrNull { LinUCB.dot(theta, vectors[it]) }!!
+            val draw = model.draw(rng)
+            vectors.indices.maxByOrNull { draw(vectors[it], candidates[it].streamId) }!!
         } else {
-            vectors.indices.maxByOrNull { model.score(vectors[it]).total }!!
+            vectors.indices.maxByOrNull { model.total(vectors[it], candidates[it].streamId) }!!
         }
         return candidates[chosen]
     }
@@ -244,8 +281,8 @@ internal object ReplayHarness {
     //   chosen_at  stream_id  reward  hex(raw_inputs_blob)
     // which is what this produces from a NewPipe database export:
     //   sqlite3 -separator $'\t' newpipe.db "SELECT chosen_at, stream_id, reward,
-    //     hex(raw_inputs_blob) FROM adaptive_shuffle_pending_events WHERE resolved = 1
-    //     ORDER BY chosen_at" > events.tsv
+    //     hex(raw_inputs_blob), completion_ratio FROM adaptive_shuffle_pending_events
+    //     WHERE resolved = 1 ORDER BY chosen_at" > events.tsv
     // Only events with a stored outcome can be replayed under every reward, so run
     // "Rebuild from history" on the device first: it writes recovered outcomes back.
     data class Loaded(val events: List<Event>, val withoutOutcome: Int, val undecodable: Int)
@@ -267,7 +304,15 @@ internal object ReplayHarness {
                 undecodable += 1
                 return@forEachLine
             }
-            val outcome = decoded.outcome
+            // An optional fifth column holds the completion_ratio column the on-device
+            // v1.1 build wrote instead of a stored outcome; the reward's remainder over
+            // fromRatio(ratio, 0) gives the restart delta, as the engine's rebuild does.
+            val outcome = decoded.outcome ?: cols.getOrNull(4)?.toDoubleOrNull()?.let { ratio ->
+                val reward = cols[2].toDoubleOrNull() ?: return@let null
+                val delta = ((reward - RewardCalculator.fromRatio(ratio, 0)) / AdaptiveShuffleConfig.REWARD_REWIND_DENSITY)
+                    .roundToInt().coerceIn(0, AdaptiveShuffleConfig.REWIND_CAP.toInt())
+                RawInputsCodec.Outcome(ratio, delta)
+            }
             if (outcome == null) {
                 withoutOutcome += 1
                 return@forEachLine

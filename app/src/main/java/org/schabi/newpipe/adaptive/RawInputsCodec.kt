@@ -30,10 +30,18 @@ import java.nio.charset.StandardCharsets
 //   7: the v2 body, the v5 block, then the v3 trailer. Numbered past the v1.1 build's
 //      versions so its blobs are never mistaken for this layout.
 //      The greedy byte's 0x10 bit marks a baseline pick: one drawn uniformly at random
-//      from the candidates instead of by the model (AdaptiveShuffleConfig.BASELINE_SHARE).
-//      Blobs written before it existed never set it.
+//      from the candidates instead of by the model. Blobs written before it existed never
+//      set it.
+//   8: the v7 layout, then: the outcome's partial rewinds (int) and whether the listener
+//      came back to the track (byte); and the item a user pick was chosen over, as a
+//      length-prefixed v8 blob of its own (length 0 for none). The greedy byte's 0x20 bit
+//      marks a user pick: a track the listener chose, not the model (spec section 6.7).
+// Who chose a track. Ordinals are not persisted; RawInputsCodec stores bits.
+enum class Chooser { MODEL, BASELINE, USER }
+
 object RawInputsCodec {
-    private const val VERSION: Byte = 7
+    private const val VERSION: Byte = 8
+    private const val VERSION_7: Byte = 7
     private const val VERSION_2: Byte = 2
     private const val VERSION_3: Byte = 3
     private const val LEGACY_4: Byte = 4
@@ -41,9 +49,17 @@ object RawInputsCodec {
     private const val LEGACY_6: Byte = 6
     private const val LEGACY_4_UNDECODED_BYTES = 8
     private const val BASELINE_BIT = 0x10
+    private const val USER_BIT = 0x20
     private const val GREEDY_MASK = 0x0F
 
-    data class Outcome(val completionRatio: Double, val restartDelta: Int)
+    // restartDelta: restarts during the listen. partialRewinds and returned are only known
+    // for listens recorded from v8 on (spec section 4.2), and are zero and false before.
+    data class Outcome(
+        val completionRatio: Double,
+        val restartDelta: Int,
+        val partialRewinds: Int = 0,
+        val returned: Boolean = false
+    )
 
     data class Decoded(
         val context: DecisionContext,
@@ -51,14 +67,18 @@ object RawInputsCodec {
         // null when unknown (v2 blobs, or decisions made before the flag existed).
         val greedy: Boolean? = null,
         val outcome: Outcome? = null,
-        val baseline: Boolean = false
-    )
+        val chooser: Chooser = Chooser.MODEL,
+        // For a user pick, the model's pick it displaced.
+        val rejected: CandidateItem? = null
+    ) {
+        val baseline: Boolean get() = chooser == Chooser.BASELINE
+    }
 
     // Re-encodes an existing blob with an outcome attached, upgrading it to the current
     // version on the way through.
     fun withOutcome(bytes: ByteArray, outcome: Outcome): ByteArray {
         val d = decode(bytes)
-        return encode(d.context, d.item, d.greedy, outcome, d.baseline)
+        return encode(d.context, d.item, d.greedy, outcome, d.chooser, d.rejected)
     }
 
     fun encode(
@@ -66,8 +86,10 @@ object RawInputsCodec {
         item: CandidateItem,
         greedy: Boolean? = null,
         outcome: Outcome? = null,
-        baseline: Boolean = false
+        chooser: Chooser = Chooser.MODEL,
+        rejected: CandidateItem? = null
     ): ByteArray {
+        val rejectedBlob = rejected?.let { encode(context, it) }
         val prevUploader = context.previousUploader?.toByteArray(StandardCharsets.UTF_8)
         val uploader = item.uploader?.toByteArray(StandardCharsets.UTF_8)
         val capacity =
@@ -101,7 +123,9 @@ object RawInputsCodec {
                 6 * Int.SIZE_BYTES + // v7: listen-event counts
                 Int.SIZE_BYTES + Double.SIZE_BYTES + Double.SIZE_BYTES + // v7: leave count, mean, M2
                 Byte.SIZE_BYTES + // v3: greedy flag (0 no, 1 yes, 2 unknown)
-                Byte.SIZE_BYTES + Double.SIZE_BYTES + Int.SIZE_BYTES // v3: outcome present, ratio, restart delta
+                Byte.SIZE_BYTES + Double.SIZE_BYTES + Int.SIZE_BYTES + // v3: outcome present, ratio, restart delta
+                Int.SIZE_BYTES + Byte.SIZE_BYTES + // v8: partial rewinds, returned
+                Int.SIZE_BYTES + (rejectedBlob?.size ?: 0) // v8: rejected item
         val buf = ByteBuffer.allocate(capacity).order(ByteOrder.LITTLE_ENDIAN)
         buf.put(VERSION)
         buf.put(context.hourOfDay.toByte())
@@ -176,7 +200,12 @@ object RawInputsCodec {
             true -> 1
             null -> 2
         }
-        buf.put((greedyCode or (if (baseline) BASELINE_BIT else 0)).toByte())
+        val chooserBits = when (chooser) {
+            Chooser.MODEL -> 0
+            Chooser.BASELINE -> BASELINE_BIT
+            Chooser.USER -> USER_BIT
+        }
+        buf.put((greedyCode or chooserBits).toByte())
         if (outcome != null) {
             buf.put(1.toByte())
             buf.putDouble(outcome.completionRatio)
@@ -186,6 +215,10 @@ object RawInputsCodec {
             buf.putDouble(0.0)
             buf.putInt(0)
         }
+        buf.putInt(outcome?.partialRewinds ?: 0)
+        buf.put(if (outcome?.returned == true) 1.toByte() else 0.toByte())
+        buf.putInt(rejectedBlob?.size ?: 0)
+        rejectedBlob?.let { buf.put(it) }
         return buf.array()
     }
 
@@ -242,13 +275,13 @@ object RawInputsCodec {
         val isOffline = buf.get() != 0.toByte()
         var conditions = ListeningConditions.UNKNOWN
         var events = ListenEventCounts.NONE
-        if (v == LEGACY_4 || v == LEGACY_5 || v == LEGACY_6 || v == VERSION) {
+        if (v == LEGACY_4 || v == LEGACY_5 || v == LEGACY_6 || v == VERSION_7 || v == VERSION) {
             val route = OutputRoute.values().getOrElse(buf.get().toInt()) { OutputRoute.OTHER }
             conditions = ListeningConditions(screenOn = buf.get() != 0.toByte(), outputRoute = route)
         }
         if (v == LEGACY_4) {
             buf.position(buf.position() + LEGACY_4_UNDECODED_BYTES)
-        } else if (v == LEGACY_5 || v == LEGACY_6 || v == VERSION) {
+        } else if (v == LEGACY_5 || v == LEGACY_6 || v == VERSION_7 || v == VERSION) {
             events = ListenEventCounts(
                 backwardSeeks = buf.getInt(),
                 forwardSeeks = buf.getInt(),
@@ -263,10 +296,17 @@ object RawInputsCodec {
         }
         var greedy: Boolean? = null
         var outcome: Outcome? = null
-        var baseline = false
-        if (v == VERSION_3 || v == VERSION) {
+        var chooser = Chooser.MODEL
+        var rejected: CandidateItem? = null
+        if (v == VERSION_3 || v == VERSION_7 || v == VERSION) {
             val code = buf.get().toInt()
-            baseline = v == VERSION && (code and BASELINE_BIT) != 0
+            if (v != VERSION_3) {
+                chooser = when {
+                    (code and USER_BIT) != 0 -> Chooser.USER
+                    (code and BASELINE_BIT) != 0 -> Chooser.BASELINE
+                    else -> Chooser.MODEL
+                }
+            }
             greedy = when (code and GREEDY_MASK) {
                 0 -> false
                 1 -> true
@@ -275,7 +315,19 @@ object RawInputsCodec {
             val outcomePresent = buf.get() != 0.toByte()
             val ratio = buf.getDouble()
             val restart = buf.getInt()
-            if (outcomePresent) outcome = Outcome(ratio, restart)
+            var partialRewinds = 0
+            var returned = false
+            if (v == VERSION) {
+                partialRewinds = buf.getInt()
+                returned = buf.get() != 0.toByte()
+                val rejectedLen = buf.getInt()
+                if (rejectedLen > 0) {
+                    val arr = ByteArray(rejectedLen)
+                    buf.get(arr)
+                    rejected = decode(arr).item
+                }
+            }
+            if (outcomePresent) outcome = Outcome(ratio, restart, partialRewinds, returned)
         }
         return Decoded(
             context = DecisionContext(
@@ -310,11 +362,12 @@ object RawInputsCodec {
             ),
             greedy = greedy,
             outcome = outcome,
-            baseline = baseline
+            chooser = chooser,
+            rejected = rejected
         )
     }
 
-    private val SUPPORTED = setOf(VERSION_2, VERSION_3, LEGACY_4, LEGACY_5, LEGACY_6, VERSION)
+    private val SUPPORTED = setOf(VERSION_2, VERSION_3, LEGACY_4, LEGACY_5, LEGACY_6, VERSION_7, VERSION)
 
     private fun writeOptionalDouble(buf: ByteBuffer, value: Double?) {
         if (value != null) {

@@ -8,6 +8,12 @@ object AdaptiveShuffleConfig {
     const val RIDGE_LAMBDA: Double = 1.0
     const val EXPLORATION_ALPHA: Double = 1.0
 
+    // Prior precision of a track's own offset in the hybrid model (spec section 6.6), in
+    // units of listens: a track's offset carries half its own evidence after this many.
+    // With reward noise about 0.8 it makes the prior sd of an offset about 0.28, and the
+    // extra exploration bonus of a never-played track 1 / sqrt(8), about 0.35.
+    const val TRACK_OFFSET_LAMBDA: Double = 8.0
+
     // Per-update discount on past evidence (spec section 6, "ways not yet discussed").
     // Each update shrinks earlier evidence by this factor, so the model's memory is
     // roughly 1 / (1 - gamma) events (about 1000 here). Tastes drift, and early decisions
@@ -20,6 +26,23 @@ object AdaptiveShuffleConfig {
     const val REWARD_EARLY_SKIP_EXTRA: Double = -0.70
     const val REWARD_REWIND_DENSITY: Double = 0.5
     const val REWIND_CAP: Double = 2.0
+
+    // A rewind of part of a track counts as this much of a restart.
+    const val PARTIAL_REWIND_WEIGHT: Double = 0.5
+
+    // Evidence weights (spec section 6.7). A track the listener chose themselves is
+    // nearly always finished, so its outcome overstates how it would do as a shuffle
+    // pick. A pairwise preference (the chosen track over the pick it displaced) touches
+    // only the shared weights, with this target margin in reward units.
+    const val USER_PICK_WEIGHT: Double = 0.5
+    const val PAIRWISE_WEIGHT: Double = 0.25
+    const val PAIRWISE_MARGIN: Double = 0.5
+    const val PAIRWISE_CLIP: Double = 3.0
+
+    // A track heard again within this long counts for less each time: the k-th listen in
+    // the window weighs 1 / k. An album on repeat for an afternoon is one choice heard
+    // many times, not many independent verdicts.
+    const val REPEAT_WINDOW_MILLIS: Long = 24L * 60L * 60L * 1000L
 
     // Completion-ratio thresholds. Still used for the early-skip penalty and for the
     // prev_was_completed / recent-skip context features.

@@ -126,8 +126,9 @@ class RawInputsCodecTest {
         assertEquals(outcome, decoded.outcome)
     }
 
-    // The trailer is a greedy byte, an outcome-present byte, a double and an int.
-    private val trailerBytes = 1 + 1 + 8 + 4
+    // The trailer is a greedy byte, an outcome-present byte, a double and an int, then
+    // v8's int, byte and empty rejected item.
+    private val trailerBytes = 1 + 1 + 8 + 4 + 4 + 1 + 4
 
     // The on-device v1.1 build wrote the v2 body and the listening/event block, with no
     // trailer, as version 5; version 6 added 154 bytes after it.
@@ -172,10 +173,32 @@ class RawInputsCodecTest {
     @Test fun `attaching an outcome upgrades a legacy blob to the current version`() {
         val outcome = RawInputsCodec.Outcome(1.0, 0)
         val upgraded = RawInputsCodec.withOutcome(legacy(6, extra = 154), outcome)
-        assertEquals(7, upgraded[0].toInt())
+        assertEquals(8, upgraded[0].toInt())
         val decoded = RawInputsCodec.decode(upgraded)
         assertEquals(richItem, decoded.item)
         assertEquals(outcome, decoded.outcome)
+    }
+
+    @Test fun `v7 blobs decode with the outcome and chooser they had`() {
+        val v8 = RawInputsCodec.encode(richContext, richItem, greedy = true, outcome = RawInputsCodec.Outcome(0.8, 1), chooser = Chooser.BASELINE)
+        val v7 = v8.copyOf(v8.size - V8_EXTRA_BYTES)
+        v7[0] = 7
+        val decoded = RawInputsCodec.decode(v7)
+        assertEquals(richItem, decoded.item)
+        assertEquals(RawInputsCodec.Outcome(0.8, 1), decoded.outcome)
+        assertEquals(Chooser.BASELINE, decoded.chooser)
+        assertEquals(true, decoded.greedy)
+    }
+
+    @Test fun `a user pick keeps the track it displaced and the full outcome`() {
+        val displaced = fixtureItem(77, uploader = "Other")
+        val bytes = RawInputsCodec.encode(richContext, richItem, chooser = Chooser.USER, rejected = displaced)
+        val outcome = RawInputsCodec.Outcome(0.6, 1, partialRewinds = 2, returned = true)
+        val decoded = RawInputsCodec.decode(RawInputsCodec.withOutcome(bytes, outcome))
+        assertEquals(Chooser.USER, decoded.chooser)
+        assertEquals(displaced, decoded.rejected)
+        assertEquals(outcome, decoded.outcome)
+        assertEquals(richItem, decoded.item)
     }
 
     @Test fun `stream id list round trips`() {
@@ -204,7 +227,7 @@ class RawInputsCodecTest {
         val ctx = fixtureContext()
         val item = fixtureItem(3)
         for (greedy in listOf(true, false, null)) {
-            val bytes = RawInputsCodec.encode(ctx, item, greedy = greedy, baseline = true)
+            val bytes = RawInputsCodec.encode(ctx, item, greedy = greedy, chooser = Chooser.BASELINE)
             val decoded = RawInputsCodec.decode(RawInputsCodec.withOutcome(bytes, RawInputsCodec.Outcome(0.5, 0)))
             assertEquals(true, decoded.baseline)
             assertEquals(greedy, decoded.greedy)
@@ -225,7 +248,9 @@ class RawInputsCodecTest {
     }
 
     companion object {
-        private const val V3_TRAILER_BYTES = 1 + 1 + 8 + 4
+        // The v3 trailer, then v8's partial rewinds, returned flag and empty rejected item.
+        private const val V8_EXTRA_BYTES = 4 + 1 + 4
+        private const val V3_TRAILER_BYTES = 1 + 1 + 8 + 4 + V8_EXTRA_BYTES
 
         // Builds the blob a v2 build would have written for the same inputs.
         fun downgradeToV2(v3: ByteArray): ByteArray {

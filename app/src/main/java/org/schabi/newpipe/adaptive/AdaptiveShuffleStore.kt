@@ -30,5 +30,8 @@ interface AdaptiveShuffleStore {
     fun getRecentResolved(limit: Int): List<AdaptiveShufflePendingEventEntity>
     fun getAllResolvedOrdered(): List<AdaptiveShufflePendingEventEntity>
 
+    // Resolved decisions of streamId chosen in [fromMillis, toMillis).
+    fun countResolvedForStreamBetween(streamId: Long, fromMillis: Long, toMillis: Long): Int
+
     fun getStreamTitle(streamId: Long): String?
 }

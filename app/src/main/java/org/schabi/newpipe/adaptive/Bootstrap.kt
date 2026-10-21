@@ -9,7 +9,7 @@ import org.schabi.newpipe.database.AppDatabase
 import org.schabi.newpipe.database.stream.model.StreamEntity
 import org.schabi.newpipe.extractor.stream.StreamType
 
-// One-shot backfill that primes the LinUCB matrices from historic playback
+// One-shot backfill that primes the model's shared weights from historic playback
 // statistics. Approximate: historical events lack queue-origin context and per-access
 // progress, so we synthesise one labelled example per stream from its aggregate stats.
 //
@@ -69,7 +69,8 @@ object Bootstrap {
             val rawV = FeatureExtractor.buildRawVector(context, item)
             freshScaler.observe(rawV)
             val scaledV = freshScaler.transform(rawV)
-            freshLinucb.update(scaledV, reward, AdaptiveShuffleConfig.BOOTSTRAP_WEIGHT)
+            // A prior over the shared weights only: no track gets an offset from a guess.
+            freshLinucb.update(scaledV, reward, null, AdaptiveShuffleConfig.BOOTSTRAP_WEIGHT)
             ingested += 1L
         }
 

@@ -134,6 +134,8 @@ class AdaptiveShuffleRepository(database: AppDatabase) : AdaptiveShuffleStore {
         pendingDao.resolveWithInputs(id, reward, rawInputsBlob, resolvedAt)
     }
 
+    override fun countResolvedForStreamBetween(streamId: Long, fromMillis: Long, toMillis: Long): Int = pendingDao.countResolvedForStreamBetween(streamId, fromMillis, toMillis)
+
     override fun updateRawInputs(id: Long, rawInputsBlob: ByteArray) {
         pendingDao.updateRawInputs(id, rawInputsBlob)
     }

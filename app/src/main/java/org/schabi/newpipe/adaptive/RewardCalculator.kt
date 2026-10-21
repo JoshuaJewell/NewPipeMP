@@ -22,11 +22,22 @@ object RewardCalculator {
     // Continuous in completion ratio: a listen abandoned halfway is a clear negative, and
     // one abandoned in the first 15% carries an extra penalty because it is the cleanest
     // "no" the user gives. Rewinds add a bonus, as before.
-    fun fromRatio(completionRatio: Double, restartCountDelta: Int): Double {
+    fun fromRatio(completionRatio: Double, restartCountDelta: Int): Double = fromOutcome(RawInputsCodec.Outcome(completionRatio, restartCountDelta))
+
+    // Under the listen rules of spec section 4.2: replays are restarts, partial rewinds
+    // (each half a restart) and coming back to the track after leaving it (a restart: the
+    // listener went back to hear it). Before v8 only restarts were recorded.
+    fun fromOutcome(o: RawInputsCodec.Outcome): Double {
+        val replays = o.restartDelta + AdaptiveShuffleConfig.PARTIAL_REWIND_WEIGHT * o.partialRewinds +
+            if (o.returned) 1.0 else 0.0
+        return base(o.completionRatio) + AdaptiveShuffleConfig.REWARD_REWIND_DENSITY *
+            min(AdaptiveShuffleConfig.REWIND_CAP, replays.coerceAtLeast(0.0))
+    }
+
+    private fun base(completionRatio: Double): Double {
         val cr = completionRatio.coerceIn(0.0, 1.0)
         var r = AdaptiveShuffleConfig.REWARD_SLOPE * cr + AdaptiveShuffleConfig.REWARD_OFFSET
         if (cr < AdaptiveShuffleConfig.EARLY_SKIP_BELOW) r += AdaptiveShuffleConfig.REWARD_EARLY_SKIP_EXTRA
-        r += AdaptiveShuffleConfig.REWARD_REWIND_DENSITY * rewindDensity(restartCountDelta)
         return r
     }
 
