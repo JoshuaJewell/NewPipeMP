@@ -35,7 +35,8 @@ abstract class AdaptiveShuffleFeatureQueriesDAO {
     // uploader spacing so they hold across app restarts and new queues.
     @Query(
         """
-        SELECT s.service_id AS serviceId, s.url AS url, s.uploader AS uploader
+        SELECT s.service_id AS serviceId, s.url AS url, s.uploader AS uploader,
+            s.uploader_url AS uploaderUrl
         FROM streams s
         INNER JOIN (
             SELECT stream_id, MAX(access_date) AS last_access
@@ -142,5 +143,10 @@ abstract class AdaptiveShuffleFeatureQueriesDAO {
 
     data class CountRow(val streamId: Long, val count: Int)
 
-    data class RecentlyPlayed(val serviceId: Int, val url: String, val uploader: String?)
+    data class RecentlyPlayed(
+        val serviceId: Int,
+        val url: String,
+        val uploader: String?,
+        val uploaderUrl: String? = null
+    )
 }

@@ -64,12 +64,20 @@ class AdaptiveShuffleRepository(database: AppDatabase) : AdaptiveShuffleStore {
 
     fun isDownloadedOffline(streamId: Long): Boolean = streamId > 0L && featureQueriesDao.isDownloadedOfflineBlocking(streamId)
 
-    fun getStreamForUrl(serviceId: Int, url: String): org.schabi.newpipe.database.stream.model.StreamEntity? = featureQueriesDao.streamBlocking(serviceId, url)
+    // The row under the URL the player records listens against (StreamUrls), falling back
+    // to the URL as given for a track only ever stored under another form.
+    fun getStreamForUrl(serviceId: Int, url: String): org.schabi.newpipe.database.stream.model.StreamEntity? {
+        val canonical = StreamUrls.canonical(serviceId, url)
+        return featureQueriesDao.streamBlocking(serviceId, canonical)
+            ?: if (canonical != url) featureQueriesDao.streamBlocking(serviceId, url) else null
+    }
 
     fun getOrCreateStream(item: org.schabi.newpipe.player.playqueue.PlayQueueItem): org.schabi.newpipe.database.stream.model.StreamEntity? {
         getStreamForUrl(item.serviceId, item.url)?.let { return it }
         return try {
             val entity = org.schabi.newpipe.database.stream.model.StreamEntity(item)
+            // Created under the URL playback will report, so its listens land on this row.
+            entity.url = StreamUrls.canonical(item.serviceId, item.url)
             entity.uid = streamDao.upsert(entity)
             entity
         } catch (t: RuntimeException) {

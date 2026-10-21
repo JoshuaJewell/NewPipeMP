@@ -200,6 +200,19 @@ Found while implementing. On an automatic transition the engine pre-picks the ne
 
 Fix: at each decision, if the previous decision's track is not the one now playing, delete its pending event and snapshot.
 
+### D9. A track stored under a second URL is invisible to the model
+
+Found in the v1.1 export, 21 October 2026. Every track of the library's one Bandcamp artist was in the playlists as `https://<artist>.bandcamp.com//track/<slug>` with no uploader name, while playback recorded listens, history and statistics against `/track/<slug>`, a different `streams` row. 157 tracks were likewise in playlists as `music.youtube.com` URLs, which play as `www.youtube.com`. For such a track:
+
+- its decisions never resolved (all 293 Bandcamp decisions are unresolved), so the model never learnt from them;
+- as a candidate it always looked unplayed (no play count, completion rate or recency);
+- `is_audio_only` is 1 only for Bandcamp in this library, so that direction of the model saw no evidence, and its uncertainty never shrank: a standing exploration bonus for every Bandcamp track;
+- the blank uploader name never counted as a recent uploader, so spacing did not apply to it.
+
+The artist was 25 of about 2,100 playlist tracks (1.2%) and 15% of all picks.
+
+Fix: `StreamUrls.canonical` gives one URL per track (the YouTube watch URL; repeated path slashes collapsed). Candidate rows are looked up and created under it, recency keys use it, and the library download deduplicates by it. Uploader spacing identifies an uploader by channel URL, falling back to the name. A decision whose track the player reports under another row is still resolved through the queue item's row. The 293 unresolved decisions have no outcome to recover and are left out of rebuilds, as before.
+
 ---
 
 ## 6. Remediation plan

@@ -24,7 +24,15 @@ object CandidateFilter {
         val uploaderSpacingUsed: Int
     )
 
-    fun key(serviceId: Int, url: String): String = "$serviceId|$url"
+    // Over the canonical URL, so a track reached under two URLs is excluded as one.
+    fun key(serviceId: Int, url: String): String = "$serviceId|${StreamUrls.canonical(serviceId, url)}"
+
+    // Who made a track, for uploader spacing. The channel URL where there is one: some
+    // imports store no uploader name (a whole Bandcamp artist had none), and a blank name
+    // never counted as a recent uploader, so spacing let that artist play back to back.
+    // The URL is also stable where display names differ between sources.
+    fun uploaderKey(uploaderUrl: String?, uploader: String?): String? = uploaderUrl?.trim()?.takeIf { it.isNotEmpty() }?.trimEnd('/')
+        ?: uploader?.trim()?.takeIf { it.isNotEmpty() }
 
     fun recencyWindowFor(tailSize: Int): Int {
         val scaled = (tailSize * AdaptiveShuffleConfig.RECENCY_EXCLUSION_FRACTION).toInt()

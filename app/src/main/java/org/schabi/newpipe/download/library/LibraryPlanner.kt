@@ -5,6 +5,7 @@
 package org.schabi.newpipe.download.library
 
 import java.io.Serializable
+import org.schabi.newpipe.adaptive.StreamUrls
 
 // One entry of a playlist, as the library download sees it.
 data class LibraryTrack(
@@ -62,19 +63,14 @@ data class LibraryPlan(
 // folder, and one playlist file per playlist that lists them.
 object LibraryPlanner {
 
-    private val YOUTUBE_ID = Regex("""(?:[?&]v=|youtu\.be/|/shorts/|/embed/|/live/)([A-Za-z0-9_-]{11})""")
     private const val MAX_NAME_LENGTH = 120
 
     // The same video reached through different URLs (music.youtube.com, youtu.be, a
-    // trailing &list= or &t=) is one track.
+    // trailing &list= or &t=, a doubled slash in a Bandcamp path) is one track.
     @JvmStatic
     fun trackKey(serviceId: Int, url: String): String {
-        val trimmed = url.trim()
-        val lower = trimmed.lowercase()
-        if ("youtube.com" in lower || "youtu.be" in lower) {
-            YOUTUBE_ID.find(trimmed)?.let { return "$serviceId|yt:${it.groupValues[1]}" }
-        }
-        return "$serviceId|$trimmed"
+        StreamUrls.youtubeId(url.trim())?.let { return "$serviceId|yt:$it" }
+        return "$serviceId|${StreamUrls.canonical(serviceId, url)}"
     }
 
     @JvmStatic

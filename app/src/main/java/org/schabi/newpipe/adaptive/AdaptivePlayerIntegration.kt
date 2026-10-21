@@ -52,6 +52,11 @@ class AdaptivePlayerIntegration(
     // track before it starts, that decision is discarded as never having played.
     private var lastDecision: Pair<Long, Long>? = null // (streamId, pendingEventId)
 
+    // The streams row of the queue item now playing, as decisions know it. The player
+    // reports listens by the row of the URL it played; should the two ever differ, the
+    // decision is still resolved through this one.
+    private var nowPlayingStreamId: Long? = null
+
     fun ensureInitialised() {
         if (engine.numEvents() == 0L) {
             val result = engine.initialise()
@@ -69,7 +74,9 @@ class AdaptivePlayerIntegration(
 
     fun onTrackResolution(streamId: Long, progressMillis: Long, durationMillis: Long) {
         val currentRestart = repository.getRestartCount(streamId)
+        val alias = nowPlayingStreamId?.takeIf { it != streamId }
         val resolution = engine.resolveOutcome(streamId, progressMillis, durationMillis, currentRestart)
+            ?: alias?.let { engine.resolveOutcome(it, progressMillis, durationMillis, currentRestart) }
             ?: return
         previousCompleted = resolution.completionRatio >= AdaptiveShuffleConfig.COMPLETION_AT_OR_ABOVE
         recordSkipObservation(resolution.completionRatio < AdaptiveShuffleConfig.EARLY_SKIP_BELOW)
@@ -103,6 +110,7 @@ class AdaptivePlayerIntegration(
         val currentStreamId = repository.getStreamForUrl(currentItem.serviceId, currentItem.url)?.uid
         // Before any reset, which forgets the last decision without discarding it.
         discardUnplayedDecision(currentStreamId)
+        nowPlayingStreamId = currentStreamId
         if (session.begin(playQueue)) {
             resetSession()
         } else if (lastActivityAt > 0L && now - lastActivityAt > AdaptiveShuffleConfig.SESSION_GAP_MILLIS) {
@@ -117,7 +125,7 @@ class AdaptivePlayerIntegration(
         session.notePlayed(keys[current])
         val pool = session.candidateIndices(keys, current, repeatAll)
         if (pool.isEmpty()) return null
-        val entries = pool.map { i -> CandidateFilter.TailEntry(i, keys[i], all[i].uploader) }
+        val entries = pool.map { i -> CandidateFilter.TailEntry(i, keys[i], uploaderKey(all[i])) }
         val filtered = CandidateFilter.filter(entries, recentKeys.toList(), recentUploaders.toList())
         val sampled = CandidateFilter.sample(filtered.eligible, samplingCap, rng)
         if (sampled.isEmpty()) return null
@@ -136,7 +144,8 @@ class AdaptivePlayerIntegration(
         val chosenItem = pairs.first { it.second === decision.chosen }.first
 
         engine.captureSnapshot(chosenStreamId, repository.getRestartCount(chosenStreamId))
-        previousUploader = chosenItem.uploader
+        // As the candidate knows it, so same_uploader_as_prev compares like with like.
+        previousUploader = decision.chosen.uploader
         previousStreamId = chosenStreamId
         previousAutoQueued = chosenItem.isAutoQueued
         lastDecision = chosenStreamId to decision.pendingEventId
@@ -215,7 +224,7 @@ class AdaptivePlayerIntegration(
         recentKeys.remove(key)
         recentKeys.addFirst(key)
         while (recentKeys.size > AdaptiveShuffleConfig.RECENCY_EXCLUSION_MAX) recentKeys.removeLast()
-        recentUploaders.addFirst(item.uploader)
+        recentUploaders.addFirst(uploaderKey(item))
         while (recentUploaders.size > AdaptiveShuffleConfig.UPLOADER_SPACING) recentUploaders.removeLast()
     }
 
@@ -228,7 +237,9 @@ class AdaptivePlayerIntegration(
             emptyList()
         }
         for (row in rows) recentKeys.addLast(CandidateFilter.key(row.serviceId, row.url))
-        for (row in rows.take(AdaptiveShuffleConfig.UPLOADER_SPACING)) recentUploaders.addLast(row.uploader)
+        for (row in rows.take(AdaptiveShuffleConfig.UPLOADER_SPACING)) {
+            recentUploaders.addLast(CandidateFilter.uploaderKey(row.uploaderUrl, row.uploader))
+        }
     }
 
     fun confidenceFromLastDecision(): Double {
@@ -291,6 +302,8 @@ class AdaptivePlayerIntegration(
     }
 
     companion object {
+        private fun uploaderKey(item: PlayQueueItem): String? = CandidateFilter.uploaderKey(item.uploaderUrl, item.uploader)
+
         // Local playlists and history lists are played as a SinglePlayQueue holding many
         // items, so a SinglePlayQueue counts as a playlist once it holds more than one
         // track the user (not autoplay) put there.
