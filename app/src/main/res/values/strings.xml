@@ -162,6 +162,15 @@
     <string name="adaptive_shuffle_metrics_caption">Over the last %1$d tracks that played. These measure repetition directly; the weights below do not.</string>
     <string name="adaptive_shuffle_metrics_empty">No resolved decisions yet</string>
     <string name="adaptive_shuffle_metrics_unique">Distinct tracks: %1$d of %2$d</string>
+    <string name="adaptive_shuffle_metrics_top_uploader_offered">Most-served uploader: %1$s (%2$d%%, against %3$d%% of what was on offer)</string>
+    <string name="adaptive_shuffle_metrics_over_served">Served most above its share: %1$s (%2$d%% served, %3$d%% on offer)</string>
+    <string name="adaptive_shuffle_user_pick">You</string>
+    <string name="adaptive_shuffle_offsets_label">Tracks it has learnt about</string>
+    <string name="adaptive_shuffle_offsets_caption">How far each track\'s own listens put it above or below what its features predict, in reward. Shrinks towards zero for tracks with few listens.</string>
+    <string name="adaptive_shuffle_offsets_empty">No track has enough listens yet</string>
+    <string name="adaptive_shuffle_offsets_liked">Liked more than expected:</string>
+    <string name="adaptive_shuffle_offsets_disliked">Liked less than expected:</string>
+    <string name="adaptive_shuffle_offsets_row">%1$s: %2$+.2f (%3$.1f listens)</string>
     <string name="adaptive_shuffle_metrics_top_uploader">Most-served uploader: %1$s (%2$d%%)</string>
     <string name="adaptive_shuffle_metrics_top_track">Most-served track: %1$s (%2$d%%)</string>
     <string name="adaptive_shuffle_metrics_sessions">Recurring across the last %1$d sessions:</string>

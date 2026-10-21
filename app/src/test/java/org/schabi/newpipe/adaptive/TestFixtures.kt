@@ -81,6 +81,8 @@ internal class InMemoryStore : AdaptiveShuffleStore {
     override fun getAllResolvedOrdered() = events.values.filter { it.resolved }.sortedBy { it.chosenAt }
     override fun countResolvedForStreamBetween(streamId: Long, fromMillis: Long, toMillis: Long) = events.values.count { it.streamId == streamId && it.resolved && it.chosenAt >= fromMillis && it.chosenAt < toMillis }
     override fun getStreamTitle(streamId: Long): String? = "track $streamId"
+    val uploaders = HashMap<Long, String?>()
+    override fun getStreamUploaders(streamIds: Collection<Long>): Map<Long, String?> = streamIds.filter { it in uploaders }.associateWith { uploaders[it] }
 }
 
 // Monotonic fake clock; each call advances by stepMillis.

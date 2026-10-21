@@ -155,6 +155,16 @@ class AdaptiveShuffleEngine(
         DecisionResult(chosen, score, store.insertPending(event), greedy = false, chooser = Chooser.USER)
     }
 
+    // The candidate a pending decision chose, as it was scored.
+    fun decisionItem(eventId: Long): CandidateItem? = synchronized(lock) {
+        val event = store.getPendingById(eventId) ?: return@synchronized null
+        try {
+            RawInputsCodec.decode(event.rawInputsBlob).item
+        } catch (t: RuntimeException) {
+            null
+        }
+    }
+
     fun captureSnapshot(streamId: Long, currentRestartCount: Int) {
         snapshots[streamId] = PlaybackSnapshot(streamId, clock(), currentRestartCount)
     }
@@ -431,13 +441,20 @@ class AdaptiveShuffleEngine(
     // to cover both the decision window and the session window.
     fun repetitionMetrics(rowsToRead: Int = 500): RepetitionMetrics.Report {
         val rows = store.getRecentResolved(rowsToRead)
+        val recent = rows.sortedByDescending { it.chosenAt }.take(AdaptiveShuffleConfig.METRICS_WINDOW)
+        // Candidates are looked up only for the window the shares are computed over.
+        val candidates = recent.associate { e ->
+            e.id to (e.candidateStreamIdsBlob?.let { b -> runCatching { RawInputsCodec.decodeStreamIds(b).toList() }.getOrNull() } ?: emptyList())
+        }
+        val uploaders = store.getStreamUploaders(candidates.values.flatten().toSet())
         val served = rows.map { e ->
             val uploader = try {
                 RawInputsCodec.decode(e.rawInputsBlob).item.uploader
             } catch (t: RuntimeException) {
                 null
             }
-            RepetitionMetrics.Served(e.chosenAt, e.streamId, uploader)
+            val offered = candidates[e.id]?.takeIf { it.isNotEmpty() }?.map { uploaders[it] }
+            RepetitionMetrics.Served(e.chosenAt, e.streamId, uploader, offered)
         }
         return RepetitionMetrics.compute(served)
     }

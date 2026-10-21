@@ -142,6 +142,28 @@ Interpretation notes from the data, for the debug-view descriptions: forward see
 
 Still unlogged (from the hooks audit, not required here): share events, notification-click attribution, explicit thumbs-down, session boundaries.
 
+### 4.2 What a listen says (listen rules)
+
+How a listen becomes a verdict on its track: a completion, a skip, or nothing. A listen that says nothing leaves no trace on the track (no skip, no leave point, no model update); it is not a mild skip. The rules are in `player/playback` (`ListenTrace`, `ListenJudge`, `ReturnWindow`, `ListenDisruptions`), with no player state, so each has its own tests.
+
+**Coverage, not position.** The completion ratio is the share of the track heard at least once, measured from where the listen began (`ListenTrace`). The position a track was left at said little: seeking to the last ten seconds and letting it end read as a full listen, and a track resumed halfway (NewPipe resumes from saved progress) and finished read as half of one. A listen resumed with under 30 s left is not judged. A natural end counts as a completion when at least 60% was heard, so skipping a long intro or outro is not rejecting the track; seeking almost to the end and letting it end is still a skip.
+
+**Rewinds by gesture.** A run of seeks with under 3 s of listening between them is one gesture, judged by its net movement: tapping rewind three times is one rewind. A net move back of 10 s or more is a restart if it goes from past 10 s to before 5 s, else a partial rewind; anything shorter is scrubbing or catching a word. The reward's replay bonus counts restarts, partial rewinds at half a restart, and returning to the track (below) as a restart.
+
+**Coming back.** A finished listen is held until the next track has played 20 s (`ReturnWindow`). If playback goes back to the held track first (previous, or a tap on it in the queue), the held listen resumes as one listen instead of counting as a skip, and the track played on the way is a detour that says nothing. This covers a fumbled headset button, a change of mind, and going back to hear the track that just ended. A held listen is also released by leaving for a third track, a new queue, or the player closing.
+
+**Not judged:**
+- the queue's first track, left within 30 s while shuffle is on, whether shuffle was turned on during it or was already on: "Play all", shuffle, skip. That track was only where the queue started, however often it is the same one;
+- removed from the queue while playing, or failed part way;
+- paused by the system (audio focus lost to a call or another app, headphones unplugged, a Bluetooth device gone) and left while still paused or within 10 s of playing again; such a pause is also not counted as a pause that ended in a resume or a skip;
+- left during a stall of 3 s or more, or within 10 s after one;
+- left within 1 s of playing (a double press), or within 3 s with the screen off, when nothing showed what was playing;
+- a detour (above).
+
+**Volume.** Steps in one direction less than 2 s apart are one adjustment, so holding a key is not six "volume up" events.
+
+**Context timing.** Because a verdict waits for the return window, the next pick's context (previous track completed, recent skip rate) uses the provisional verdict at the moment of leaving.
+
 ---
 
 ## 5. Defects found in `dev`
@@ -212,6 +234,10 @@ Found in the v1.1 export, 21 October 2026. Every track of the library's one Band
 The artist was 25 of about 2,100 playlist tracks (1.2%) and 15% of all picks.
 
 Fix: `StreamUrls.canonical` gives one URL per track (the YouTube watch URL; repeated path slashes collapsed). Candidate rows are looked up and created under it, recency keys use it, and the library download deduplicates by it. Uploader spacing identifies an uploader by channel URL, falling back to the name. A decision whose track the player reports under another row is still resolved through the queue item's row. The 293 unresolved decisions have no outcome to recover and are left out of rebuilds, as before.
+
+### D10. Early scaling could pin a weight for thousands of updates
+
+Found while testing 6.7. The feature scaler floors the standard deviation at 0.001, so after a few identical values (early in a rebuild, or a fresh install) the next different value came out hundreds of standard deviations away. One update with such a vector makes the model's precision in that direction enormous, and with the discount at 0.999 it takes thousands of events to fade. Fix: scaled features are clipped to 5 standard deviations.
 
 ---
 
@@ -295,6 +321,25 @@ Thompson sampling adds variety where the model is uncertain. It does not correct
 
 ---
 
+### 6.6 Hybrid model: per-track offsets
+
+The linear model knew tracks only through proxies (rating, completion rate, play count, recency), so correcting a wrong guess about one song meant moving weights that every song shares. The model is now reward = theta . x + u_track + noise (`HybridLinUCB`): the shared weights as before, and an offset per track with a zero-mean Gaussian prior of precision `TRACK_OFFSET_LAMBDA` = 8 (a prior sd of about 0.28 in reward, against reward noise of about 0.8). A track's offset carries half its own evidence after about eight listens; a never-played track scores as the shared model says, with an exploration bonus of up to 1/sqrt(8).
+
+It is Li et al.'s (2010) hybrid LinUCB with a one-dimensional per-arm part, solved jointly: the shared block of the precision has every offset integrated out (Schur complement), so a skip that the context explains (a skipping streak, a late session) is not put down to the track. The class keeps raw weighted sums, from which the posterior is derived on demand; the discount is one scale factor, and an observation can inform only the shared weights (the bootstrap prior and pairwise preferences, 6.7). A unit test checks it against explicit ridge regression on one-hot track columns, with and without the discount. Thompson sampling draws the shared weights once per decision, then each candidate's offset given them.
+
+The stored model's form is part of the schema hash, so the first launch rebuilds from history.
+
+Replay (7.2): completion rank correlation 0.167 to 0.205 on the synthetic log, 0.312 to 0.328 on the 518 decisions of the v1.1 export with a recoverable outcome.
+
+### 6.7 Evidence weights
+
+- **Model and random picks** count fully.
+- **The listener's own picks** (a tap in the queue, "play next") are recorded as decisions with chooser USER, at weight 0.5: a track chosen deliberately is nearly always finished, which overstates how it would do as a shuffle pick. Tapping the model's own pick is not one.
+- **Preferences.** If a user pick displaced the model's waiting pick and was then given a fair hearing (completion ratio at least 0.15), the preference trains the shared weights on the difference of the two feature vectors, target 0.5, weight 0.25. Context cancels in the difference, so only what differs between the tracks is learnt. Each component is clipped to 3 standard deviations: the displaced track was never heard, so the scaler may not have seen values like its own. The per-track offsets are not given the comparison; the chosen track's own listen reaches its offset anyway.
+- **Repeats.** The k-th resolved listen of a track within 24 hours weighs 1/k. An album on repeat for an afternoon is one choice heard many times.
+
+Raw-inputs format v8 stores the chooser, the displaced item, and the outcome's partial rewinds and return flag. A rebuild replays all of this the same way.
+
 ## 7. Validation
 
 ### 7.1 Repetition metrics (new, live and in replay)
@@ -308,6 +353,8 @@ Surface in the debug view, computed over the last 100 decisions:
 Also over the last 10 sessions: fraction of sessions containing each of the top 5 most-served tracks. This is the metric that captures the cross-session pattern in §2.2, which per-100-decision counts can miss.
 
 These numbers track the experience. The weight vector does not, as §3 shows.
+
+**Fairness to what was on offer.** "Most-served uploader" alone misreads a queue with little choice: five hours of one album serves one uploader 100% of the time. Each pick's candidates are known (stored since v1.1), so the view also gives the top uploader's average share of the candidates on offer, and the uploader served furthest above that share (if by more than 5 points). One album on repeat is then served 100% against 100% offered, which is no collapse; 50% against 10% offered is.
 
 ### 7.2 Replay harness
 

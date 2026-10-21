@@ -43,4 +43,29 @@ class RepetitionMetricsTest {
     @Test fun `empty input gives an empty report`() {
         assertEquals(0, RepetitionMetrics.compute(emptyList()).windowSize)
     }
+
+    // Five hours of one album: served 100% one uploader, but that was all there was.
+    @Test fun `an uploader served as often as it was on offer is not over-served`() {
+        val album = List(12) { "Carly Rae Jepsen" }
+        val served = (0 until 60).map { RepetitionMetrics.Served(it * 1000L, (it % 12).toLong(), "Carly Rae Jepsen", album) }
+        val r = RepetitionMetrics.compute(served, window = 60)
+        assertEquals(1.0, r.topUploaderShare, 1e-12)
+        assertEquals(1.0, r.topUploaderOfferedShare!!, 1e-12)
+        assertEquals(null, r.mostOverServed)
+    }
+
+    @Test fun `an uploader served far above its share of the candidates is reported`() {
+        val offer = listOf("A", "B", "C", "D", "E", "F", "G", "H", "I", "J")
+        val served = (0 until 50).map { i -> RepetitionMetrics.Served(i * 1000L, i.toLong(), if (i % 2 == 0) "A" else offer[1 + i % 9], offer) }
+        val r = RepetitionMetrics.compute(served, window = 50)
+        assertEquals("A", r.topUploader)
+        assertEquals(0.1, r.topUploaderOfferedShare!!, 1e-12)
+        assertEquals("A", r.mostOverServed!!.uploader)
+        assertEquals(0.5, r.mostOverServed!!.served, 1e-12)
+    }
+
+    @Test fun `without candidate lists there is no offered share`() {
+        val r = RepetitionMetrics.compute(listOf(RepetitionMetrics.Served(0, 1, "A")))
+        assertEquals(null, r.topUploaderOfferedShare)
+    }
 }

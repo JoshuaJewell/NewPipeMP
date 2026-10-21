@@ -28,6 +28,7 @@ import org.schabi.newpipe.adaptive.AdaptivePlayerIntegration
 import org.schabi.newpipe.adaptive.AdaptiveShuffleEngine
 import org.schabi.newpipe.adaptive.AdaptiveShuffleHolder
 import org.schabi.newpipe.adaptive.ArmComparison
+import org.schabi.newpipe.adaptive.Chooser
 import org.schabi.newpipe.adaptive.FeatureSchema
 import org.schabi.newpipe.adaptive.RepetitionMetrics
 
@@ -43,6 +44,7 @@ class AdaptiveShuffleDebugFragment : Fragment() {
     private val exploitChipColour = Color.parseColor("#1565C0")
     private val exploreChipColour = Color.parseColor("#EF6C00")
     private val randomChipColour = Color.parseColor("#616161")
+    private val userChipColour = Color.parseColor("#2E7D32")
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -115,6 +117,15 @@ class AdaptiveShuffleDebugFragment : Fragment() {
         )
 
         disposables.add(
+            Single.fromCallable { engine.trackOffsets() }
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe({ (liked, disliked) ->
+                    renderOffsets(view, liked, disliked)
+                }, { _ -> })
+        )
+
+        disposables.add(
             Single.fromCallable { engine.armComparison() }
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
@@ -169,6 +180,35 @@ class AdaptiveShuffleDebugFragment : Fragment() {
         body.text = lines.joinToString("\n")
     }
 
+    private fun renderOffsets(
+        view: View,
+        liked: List<AdaptiveShuffleEngine.TrackOffset>,
+        disliked: List<AdaptiveShuffleEngine.TrackOffset>
+    ) {
+        val body = view.findViewById<TextView>(R.id.offsetsBody)
+        if (liked.isEmpty() && disliked.isEmpty()) {
+            body.text = getString(R.string.adaptive_shuffle_offsets_empty)
+            return
+        }
+        fun row(o: AdaptiveShuffleEngine.TrackOffset) = getString(
+            R.string.adaptive_shuffle_offsets_row,
+            o.title ?: "#${o.streamId}",
+            o.offset,
+            o.weightedListens
+        )
+        val lines = ArrayList<String>()
+        if (liked.isNotEmpty()) {
+            lines += getString(R.string.adaptive_shuffle_offsets_liked)
+            liked.forEach { lines += row(it) }
+        }
+        if (disliked.isNotEmpty()) {
+            if (lines.isNotEmpty()) lines += ""
+            lines += getString(R.string.adaptive_shuffle_offsets_disliked)
+            disliked.forEach { lines += row(it) }
+        }
+        body.text = lines.joinToString("\n")
+    }
+
     private fun armLine(name: String, arm: ArmComparison.Arm): String = getString(
         R.string.adaptive_shuffle_compare_arm,
         name,
@@ -191,10 +231,28 @@ class AdaptiveShuffleDebugFragment : Fragment() {
         val lines = ArrayList<String>()
         lines += getString(R.string.adaptive_shuffle_metrics_unique, report.uniqueTracks, report.windowSize)
         report.topUploader?.let {
+            val offered = report.topUploaderOfferedShare
+            lines += if (offered != null) {
+                getString(
+                    R.string.adaptive_shuffle_metrics_top_uploader_offered,
+                    it,
+                    (report.topUploaderShare * 100).toInt(),
+                    (offered * 100).toInt()
+                )
+            } else {
+                getString(
+                    R.string.adaptive_shuffle_metrics_top_uploader,
+                    it,
+                    (report.topUploaderShare * 100).toInt()
+                )
+            }
+        }
+        report.mostOverServed?.let {
             lines += getString(
-                R.string.adaptive_shuffle_metrics_top_uploader,
-                it,
-                (report.topUploaderShare * 100).toInt()
+                R.string.adaptive_shuffle_metrics_over_served,
+                it.uploader,
+                (it.served * 100).toInt(),
+                (it.offered * 100).toInt()
             )
         }
         report.topTrackId?.let {
@@ -288,7 +346,10 @@ class AdaptiveShuffleDebugFragment : Fragment() {
             }
 
             val chip = row.findViewById<TextView>(R.id.decisionChip)
-            if (decision.baseline) {
+            if (decision.chooser == Chooser.USER) {
+                chip.text = getString(R.string.adaptive_shuffle_user_pick)
+                chip.setBackgroundColor(userChipColour)
+            } else if (decision.baseline) {
                 chip.text = getString(R.string.adaptive_shuffle_random)
                 chip.setBackgroundColor(randomChipColour)
             } else if (decision.exploit) {

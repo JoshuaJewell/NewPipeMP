@@ -54,10 +54,9 @@ class AdaptivePlayerIntegration(
     // track before it starts, that decision is discarded as never having played.
     private var lastDecision: Pair<Long, Long>? = null // (streamId, pendingEventId)
 
-    // The streams row of the queue item now playing, as decisions know it. The player
-    // reports listens by the row of the URL it played; should the two ever differ, the
-    // decision is still resolved through this one.
-    private var nowPlayingStreamId: Long? = null
+    // The track the listener last chose themselves (a queue tap, "play next"), as a
+    // CandidateFilter key, until it starts playing (spec section 6.7).
+    private var pendingUserChoice: String? = null
 
     fun ensureInitialised() {
         if (engine.numEvents() == 0L) {
@@ -74,14 +73,15 @@ class AdaptivePlayerIntegration(
         return if (index.isEmpty()) null else index
     }
 
-    fun onTrackResolution(streamId: Long, progressMillis: Long, durationMillis: Long) {
-        val currentRestart = repository.getRestartCount(streamId)
-        val alias = nowPlayingStreamId?.takeIf { it != streamId }
-        val resolution = engine.resolveOutcome(streamId, progressMillis, durationMillis, currentRestart)
-            ?: alias?.let { engine.resolveOutcome(it, progressMillis, durationMillis, currentRestart) }
-            ?: return
-        previousCompleted = resolution.completionRatio >= AdaptiveShuffleConfig.COMPLETION_AT_OR_ABOVE
-        recordSkipObservation(resolution.completionRatio < AdaptiveShuffleConfig.EARLY_SKIP_BELOW)
+    // A listen ended, provisionally judged (the player may still find the listener came
+    // straight back to it). The context of the next picks follows it at once.
+    fun noteListenEnded(completionRatio: Double) {
+        previousCompleted = completionRatio >= AdaptiveShuffleConfig.COMPLETION_AT_OR_ABOVE
+        recordSkipObservation(completionRatio < AdaptiveShuffleConfig.EARLY_SKIP_BELOW)
+    }
+
+    private fun onTrackResolution(streamId: Long, outcome: RawInputsCodec.Outcome): Boolean {
+        val resolution = engine.resolveOutcome(streamId, outcome) ?: return false
         val now = System.currentTimeMillis()
         val decisionTime = resolutionDecisionTimestamps.remove(streamId) ?: now
         telemetry?.logResolution(
@@ -92,6 +92,7 @@ class AdaptivePlayerIntegration(
             now - decisionTime,
             now
         )
+        return true
     }
 
     // Picks the queue item that should play after the current one, or null when there is
@@ -109,10 +110,17 @@ class AdaptivePlayerIntegration(
 
         val now = clock()
         val currentItem = all[current]
-        val currentStreamId = repository.getStreamForUrl(currentItem.serviceId, currentItem.url)?.uid
+        val currentRow = repository.getStreamForUrl(currentItem.serviceId, currentItem.url)
+        val currentStreamId = currentRow?.uid
+        // A track the listener chose: record it, and the pick it displaced, before that
+        // pick is discarded below. Its context is the one it was chosen in.
+        if (pendingUserChoice != null && pendingUserChoice == CandidateFilter.key(currentItem.serviceId, currentItem.url)) {
+            pendingUserChoice = null
+            // Tapping the model's own pick is not a choice against it.
+            if (lastDecision?.first != currentStreamId) recordUserPick(playQueue, currentItem, currentStreamId, now)
+        }
         // Before any reset, which forgets the last decision without discarding it.
         discardUnplayedDecision(currentStreamId)
-        nowPlayingStreamId = currentStreamId
         if (session.begin(playQueue)) {
             resetSession()
         } else if (lastActivityAt > 0L && now - lastActivityAt > AdaptiveShuffleConfig.SESSION_GAP_MILLIS) {
@@ -122,6 +130,11 @@ class AdaptivePlayerIntegration(
         }
         lastActivityAt = now
         noteNowPlaying(currentItem)
+        // The pick follows the track now playing, so that is its previous track, whoever
+        // chose it. Taken from the streams row, as the candidates' uploaders are.
+        previousUploader = currentRow?.uploader
+        previousStreamId = currentStreamId
+        previousAutoQueued = currentItem.isAutoQueued
 
         val keys = all.map { CandidateFilter.key(it.serviceId, it.url) }
         session.notePlayed(keys[current])
@@ -147,10 +160,6 @@ class AdaptivePlayerIntegration(
         val chosenItem = pairs.first { it.second === decision.chosen }.first
 
         engine.captureSnapshot(chosenStreamId, repository.getRestartCount(chosenStreamId))
-        // As the candidate knows it, so same_uploader_as_prev compares like with like.
-        previousUploader = decision.chosen.uploader
-        previousStreamId = chosenStreamId
-        previousAutoQueued = chosenItem.isAutoQueued
         lastDecision = chosenStreamId to decision.pendingEventId
         resolutionDecisionTimestamps[chosenStreamId] = now
         telemetry?.logDecision(
@@ -165,16 +174,44 @@ class AdaptivePlayerIntegration(
         return chosenItem
     }
 
-    // The player left a track. judged is false when the listen says nothing about the
-    // track (see ListenJudge); its decision, if the engine made one, is then dropped.
-    fun onTrackLeft(streamId: Long, progressMillis: Long, durationMillis: Long, judged: Boolean) {
+    // The player recorded a listen. outcome is null when the listen says nothing about the
+    // track (see ListenJudge); its decision, if one chose it, is then dropped. streamId is
+    // the row playback recorded the listen against; the queue item's own row (serviceId
+    // and url) is tried too, should a decision have been made under it.
+    fun onTrackLeft(streamId: Long, serviceId: Int, url: String, outcome: RawInputsCodec.Outcome?) {
         lastActivityAt = clock()
-        if (judged) {
-            onTrackResolution(streamId, progressMillis, durationMillis)
+        val alias = repository.getStreamForUrl(serviceId, url)?.uid?.takeIf { it != streamId }
+        if (outcome != null) {
+            if (!onTrackResolution(streamId, outcome)) alias?.let { onTrackResolution(it, outcome) }
         } else {
-            engine.abandon(streamId)
-            resolutionDecisionTimestamps.remove(streamId)
+            for (id in listOfNotNull(streamId, alias)) {
+                engine.abandon(id)
+                resolutionDecisionTimestamps.remove(id)
+            }
         }
+    }
+
+    // The listener chose a track themselves. It is recorded as their pick when it starts.
+    fun onUserChose(serviceId: Int, url: String) {
+        pendingUserChoice = CandidateFilter.key(serviceId, url)
+    }
+
+    private fun recordUserPick(playQueue: PlayQueue, item: PlayQueueItem, streamId: Long?, now: Long) {
+        // The model's pick waiting to play, if this displaced it.
+        val displaced = lastDecision?.takeIf { it.first != streamId }?.let { engine.decisionItem(it.second) }
+        val chosen = materialiser.materialisePairs(listOf(item), previousStreamId).firstOrNull()?.second ?: return
+        val pick = engine.recordUserPick(chosen, buildContext(originOf(playQueue)), displaced)
+        engine.captureSnapshot(chosen.streamId, repository.getRestartCount(chosen.streamId))
+        resolutionDecisionTimestamps[chosen.streamId] = now
+        telemetry?.logDecision(
+            chosenStreamId = chosen.streamId,
+            candidateCount = 1,
+            predictedReward = pick.score.predictedReward,
+            uncertainty = pick.score.uncertainty,
+            greedy = false,
+            nowMillis = now,
+            chooser = Chooser.USER
+        )
     }
 
     // The item could not be loaded. It is excluded from picks for the rest of the process
@@ -206,6 +243,7 @@ class AdaptivePlayerIntegration(
     fun onPlaybackStopped() {
         lastDecision?.let { (streamId, eventId) -> engine.discardDecision(eventId, streamId) }
         lastDecision = null
+        pendingUserChoice = null
         engine.abandonAll()
         resolutionDecisionTimestamps.clear()
     }

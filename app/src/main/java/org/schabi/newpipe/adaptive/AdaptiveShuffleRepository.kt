@@ -87,6 +87,11 @@ class AdaptiveShuffleRepository(database: AppDatabase) : AdaptiveShuffleStore {
 
     override fun getStreamTitle(streamId: Long): String? = streamDao.getTitleByIdBlocking(streamId)
 
+    // Chunked under SQLite's limit on bound parameters.
+    override fun getStreamUploaders(streamIds: Collection<Long>): Map<Long, String?> = streamIds.chunked(500).flatMap { chunk ->
+        featureQueriesDao.uploadersBlocking(chunk).map { it.uid to it.uploader }
+    }.toMap()
+
     fun recentlyPlayed(limit: Int) = featureQueriesDao.recentlyPlayedBlocking(limit)
 
     fun getRestartCount(streamId: Long): Int = playbackStatsDao.getStatistics(streamId).blockingGet()?.restartCount ?: 0

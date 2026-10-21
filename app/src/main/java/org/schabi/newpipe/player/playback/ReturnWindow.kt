@@ -29,6 +29,9 @@ class ReturnWindow<K : Any, T : Any>(private val windowMillis: Long = DEFAULT_WI
 
     val isHolding: Boolean get() = held != null
 
+    // Whether key's listen is the one held: going to it now would be a return.
+    fun holds(key: K): Boolean = held != null && heldKey === key
+
     // A listen of key ended and playback moved to destination (null if unknown).
     fun leave(key: K, listen: T, destination: K?): Outcome<T> {
         val k = heldKey

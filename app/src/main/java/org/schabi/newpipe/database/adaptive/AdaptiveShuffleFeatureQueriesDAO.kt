@@ -143,6 +143,11 @@ abstract class AdaptiveShuffleFeatureQueriesDAO {
 
     data class CountRow(val streamId: Long, val count: Int)
 
+    @Query("SELECT uid, uploader FROM streams WHERE uid IN (:streamIds)")
+    abstract fun uploadersBlocking(streamIds: List<Long>): List<StreamUploader>
+
+    data class StreamUploader(val uid: Long, val uploader: String?)
+
     data class RecentlyPlayed(
         val serviceId: Int,
         val url: String,

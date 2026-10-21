@@ -86,6 +86,7 @@ import org.schabi.newpipe.MainActivity;
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.adaptive.AdaptivePlayerIntegration;
 import org.schabi.newpipe.adaptive.AdaptiveShuffleHolder;
+import org.schabi.newpipe.adaptive.RawInputsCodec;
 import org.schabi.newpipe.adaptive.ShuffleSession;
 import org.schabi.newpipe.databinding.PlayerBinding;
 import org.schabi.newpipe.error.ErrorInfo;
@@ -114,7 +115,10 @@ import org.schabi.newpipe.player.playqueue.PlayQueue;
 import org.schabi.newpipe.player.playqueue.PlayQueueItem;
 import org.schabi.newpipe.player.playqueue.SinglePlayQueue;
 import org.schabi.newpipe.player.mediasource.FailedMediaSource;
+import org.schabi.newpipe.player.playback.ListenDisruptions;
 import org.schabi.newpipe.player.playback.ListenJudge;
+import org.schabi.newpipe.player.playback.ListenTrace;
+import org.schabi.newpipe.player.playback.ReturnWindow;
 import org.schabi.newpipe.player.playback.PlaybackFailurePolicy;
 import org.schabi.newpipe.player.playback.StreamRefreshPolicy;
 import org.schabi.newpipe.player.resolver.AudioPlaybackResolver;
@@ -260,11 +264,32 @@ public final class Player implements PlaybackListener, Listener {
     private long accumulatedPlayTimeMillis = 0;
     private long currentStreamDatabaseId = -1;
     private long currentStreamDuration = 0;
-    // The current listen carries no signal (see ListenJudge), so leaving it records nothing.
-    private boolean currentListenUnjudged = false;
-    // The queue item that flag was set for; it survives the item's own metadata arriving.
+    // Why the current listen carries no signal (see ListenJudge), or null if it may.
+    @Nullable
+    private ListenJudge.Unjudged currentUnjudgedReason = null;
+    // The queue item that reason was set for; it survives the item's own metadata arriving.
     @Nullable
     private PlayQueueItem unjudgedItem = null;
+    // What the current listen covered, and what happened to it from outside the music
+    // (spec section 4.2). Replaced for each listen.
+    @NonNull
+    private ListenTrace currentTrace = new ListenTrace();
+    @NonNull
+    private ListenDisruptions currentDisruptions = new ListenDisruptions();
+    // The queue item of the current listen.
+    @Nullable
+    private PlayQueueItem currentListenItem = null;
+    // The current listen continues one the user left and came straight back to.
+    private boolean currentListenReturned = false;
+    // A finished listen is held here briefly, so skipping a track and coming back to it
+    // (or going back to the one that just ended) is not recorded as leaving it.
+    private final ReturnWindow<PlayQueueItem, LeftListen> returnWindow = new ReturnWindow<>();
+    // A held listen the user went back to; it resumes when its track's metadata arrives.
+    @Nullable
+    private LeftListen pendingResume = null;
+    // The next pause was made by the system (audio focus, unplugged headphones), not the
+    // user, so it is not a pause that later ends in a resume or a skip.
+    private boolean nextPauseBySystem = false;
     // The current listen has already been recorded; guards against a second discontinuity
     // arriving before the next track's metadata.
     private boolean currentListenClosed = false;
@@ -455,6 +480,9 @@ public final class Player implements PlaybackListener, Listener {
                     final PlayQueueItem newItem = newQueue.getStreams().get(0);
                     playQueue.enqueueNext(newItem, false);
                     userQueuedNext = newItem;
+                    if (isAdaptiveShuffleActive()) {
+                        noteUserChoice(newItem);
+                    }
                     return;
                 }
 
@@ -665,6 +693,8 @@ public final class Player implements PlaybackListener, Listener {
 
     private void initPlayback(@NonNull final PlayQueue queue,
                               final boolean playOnReady) {
+        // A new queue: nothing from the old one can be returned to
+        releaseHeldListen(false);
         destroyPlayer();
         initPlayer(playOnReady);
         final boolean playbackSkipSilence = getPrefs().getBoolean(getContext().getString(
@@ -767,6 +797,7 @@ public final class Player implements PlaybackListener, Listener {
         setRecovery();
         stopActivityBinding();
 
+        releaseHeldListen(true);
         if (isAdaptiveShuffleEnabled()) {
             runAdaptive(AdaptivePlayerIntegration::onPlaybackStopped);
         }
@@ -891,6 +922,8 @@ public final class Player implements PlaybackListener, Listener {
 
         switch (intent.getAction()) {
             case AudioManager.ACTION_AUDIO_BECOMING_NOISY:
+                // Headphones unplugged or a Bluetooth device gone: the system's pause
+                onSystemPause();
                 pause();
                 break;
             case ACTION_CLOSE:
@@ -1079,6 +1112,13 @@ public final class Player implements PlaybackListener, Listener {
     private void onUpdateProgress(final int currentProgress,
                                   final int duration,
                                   final int bufferPercent) {
+        // The track now playing has played long enough that the one before can no
+        // longer be returned to
+        final LeftListen released = returnWindow.onProgress(
+                currentTrace.heardAt(currentProgress));
+        if (released != null) {
+            recordListen(released, false);
+        }
         if (isPrepared) {
             UIs.call(ui -> ui.onUpdateProgress(currentProgress, duration, bufferPercent));
             notifyProgressUpdateToListeners(currentProgress, duration, bufferPercent);
@@ -1305,6 +1345,12 @@ public final class Player implements PlaybackListener, Listener {
         // Record play/resume event
         recordPlayEvent();
         recordPauseOutcome(true);
+        if (!exoPlayerIsNull()) {
+            currentTrace.start(simpleExoPlayer.getCurrentPosition());
+        }
+        final long now = System.currentTimeMillis();
+        currentDisruptions.onResumed(now);
+        currentDisruptions.onStallEnded(now);
         currentListenHasPlayed = true;
         reloadingItem = null;
         failurePolicy.onPlaybackStarted();
@@ -1315,6 +1361,9 @@ public final class Player implements PlaybackListener, Listener {
     private void onBuffering() {
         if (DEBUG) {
             Log.d(TAG, "onBuffering() called");
+        }
+        if (currentListenHasPlayed) {
+            currentDisruptions.onStallStarted(System.currentTimeMillis());
         }
 
         UIs.call(PlayerUi::onBuffering);
@@ -1333,7 +1382,10 @@ public final class Player implements PlaybackListener, Listener {
         saveAccumulatedPlayTime();
         // Record pause event
         recordPauseEvent();
-        if (currentListenHasPlayed && currentStreamDatabaseId != -1) {
+        if (nextPauseBySystem) {
+            // Not the listener's pause: it neither resumes nor ends in a skip
+            nextPauseBySystem = false;
+        } else if (currentListenHasPlayed && currentStreamDatabaseId != -1) {
             pauseOutcomePending = true;
         }
 
@@ -1356,7 +1408,7 @@ public final class Player implements PlaybackListener, Listener {
         }
 
         // The track played to its end
-        onListenLeft(currentStreamDuration, true, false);
+        onListenLeft(currentStreamDuration, true, false, null);
 
         UIs.call(PlayerUi::onCompleted);
 
@@ -1377,6 +1429,38 @@ public final class Player implements PlaybackListener, Listener {
     private boolean isAdaptiveShuffleActive() {
         return isAdaptiveShuffleEnabled() && !exoPlayerIsNull()
                 && simpleExoPlayer.getShuffleModeEnabled();
+    }
+
+    private void noteUserChoice(@NonNull final PlayQueueItem item) {
+        final int serviceId = item.getServiceId();
+        final String url = item.getUrl();
+        runAdaptive(integration -> integration.onUserChose(serviceId, url));
+    }
+
+    /** The system paused playback, or is about to: a call, another app, unplugging. */
+    private void onSystemPause() {
+        currentDisruptions.onExternalPause(System.currentTimeMillis());
+        nextPauseBySystem = true;
+    }
+
+    @Override
+    public void onPlayWhenReadyChanged(final boolean playWhenReady, final int reason) {
+        if (!playWhenReady && reason == com.google.android.exoplayer2.Player
+                .PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
+            onSystemPause();
+        }
+    }
+
+    @Override
+    public void onPlaybackSuppressionReasonChanged(final int playbackSuppressionReason) {
+        // A transient loss of audio focus (a call, a notification) holds playback without
+        // pausing it
+        if (playbackSuppressionReason
+                != com.google.android.exoplayer2.Player.PLAYBACK_SUPPRESSION_REASON_NONE) {
+            currentDisruptions.onExternalPause(System.currentTimeMillis());
+        } else {
+            currentDisruptions.onResumed(System.currentTimeMillis());
+        }
     }
 
     /**
@@ -1513,52 +1597,191 @@ public final class Player implements PlaybackListener, Listener {
     }
 
     /**
-     * Records what leaving the current track says about it: a completion, a skip or nothing
-     * (see {@link ListenJudge}), the time played, and under adaptive shuffle the outcome of
-     * the decision that chose it. Called once per listen, from wherever playback moved on.
+     * Ends the current listen. What leaving it says about the track (a completion, a skip
+     * or nothing; see {@link ListenJudge}) is recorded once the listen can no longer be
+     * returned to (see {@link ReturnWindow}): skipping a track and coming straight back,
+     * or going back to the track that just ended, continues that listen instead. The time
+     * played is recorded at once. Called once per listen, from wherever playback moved on.
      *
      * @param positionMillis the position reached in the track being left
      * @param naturalEnd     the track played out and the player moved on by itself
      * @param removed        the track was removed from the queue while playing
+     * @param destination    the item playback moved to, if known
      */
     private void onListenLeft(final long positionMillis, final boolean naturalEnd,
-                              final boolean removed) {
+                              final boolean removed, @Nullable final PlayQueueItem destination) {
         if (currentListenClosed) {
             return;
         }
         currentListenClosed = true;
+        final boolean wasQueueStart = queueStartItem != null
+                && currentListenItem == queueStartItem;
         // Once any track has been left, the queue is no longer at its start
         queueStartItem = null;
         final long streamId = currentStreamDatabaseId;
         final long duration = currentStreamDuration;
-        if (streamId == -1 || duration <= 0) {
+        if (streamId == -1 || duration <= 0 || currentListenItem == null) {
             return;
         }
         final long position = naturalEnd ? duration : Math.max(0, positionMillis);
         addPlayTime(streamId, position - playbackStartPositionMillis);
-        recordPauseOutcome(false);
+        currentTrace.close(position);
 
-        final boolean unjudged = currentListenUnjudged || removed;
-        if (!unjudged) {
-            databaseUpdateDisposable.add(recordManager
-                    .recordLeavePoint(streamId, Math.min(1.0, (double) position / duration))
-                    .onErrorComplete().subscribe());
+        ListenJudge.Unjudged reason = removed ? ListenJudge.Unjudged.REMOVED
+                : currentUnjudgedReason;
+        // "Play all", shuffle, skip: the queue's first track was only where it started
+        if (reason == null && wasQueueStart && !naturalEnd && !exoPlayerIsNull()
+                && simpleExoPlayer.getShuffleModeEnabled()
+                && currentTrace.getHeardMillis() < ListenJudge.SHUFFLE_START_GRACE_MILLIS) {
+            reason = ListenJudge.Unjudged.QUEUE_START;
         }
-        switch (ListenJudge.judge(position, duration, naturalEnd, unjudged)) {
+        final long now = System.currentTimeMillis();
+        final LeftListen left = new LeftListen(currentListenItem, streamId, duration, position,
+                naturalEnd, currentTrace, currentDisruptions, isScreenOn(),
+                currentDisruptions.interruptedAt(now), currentDisruptions.stalledAt(now),
+                reason, pauseOutcomePending, currentListenReturned);
+        pauseOutcomePending = false;
+        // Until the next listen begins, nothing is playing that could release the held one
+        currentTrace = new ListenTrace();
+        currentDisruptions = new ListenDisruptions();
+
+        // What the next pick's context should assume, before the verdict is final
+        final ListenJudge.Judgement provisional = ListenJudge.judge(left.facts());
+        if (isAdaptiveShuffleEnabled() && provisional.getCompletionRatio() != null) {
+            final double ratio = provisional.getCompletionRatio();
+            runAdaptive(integration -> integration.noteListenEnded(ratio));
+        }
+
+        final ReturnWindow.Outcome<LeftListen> outcome =
+                returnWindow.leave(currentListenItem, left, destination);
+        if (outcome instanceof ReturnWindow.Outcome.Returned) {
+            final ReturnWindow.Outcome.Returned<LeftListen> back =
+                    (ReturnWindow.Outcome.Returned<LeftListen>) outcome;
+            // Played only on the way back: no verdict on it
+            recordListen(back.getDetour().asDetour(), false);
+            pendingResume = back.getResumed();
+        } else {
+            final LeftListen released = ((ReturnWindow.Outcome.Held<LeftListen>) outcome)
+                    .getReleased();
+            if (released != null) {
+                recordListen(released, false);
+            }
+        }
+    }
+
+    /**
+     * Records a listen that can no longer be returned to.
+     *
+     * @param left          the listen
+     * @param playerClosing the player is being torn down, so the writes must not be tied
+     *                      to its subscriptions, which are about to be cleared
+     */
+    private void recordListen(@NonNull final LeftListen left, final boolean playerClosing) {
+        final ListenJudge.Judgement judgement = ListenJudge.judge(left.facts());
+        final long streamId = left.streamId;
+        final java.util.List<io.reactivex.rxjava3.core.Completable> writes =
+                new java.util.ArrayList<>();
+        if (judgement.getUnjudged() == null) {
+            writes.add(recordManager.recordLeavePoint(streamId,
+                    Math.min(1.0, (double) left.positionMillis / left.durationMillis)));
+            if (left.pausePending) {
+                writes.add(recordManager.recordPauseOutcome(streamId, false));
+            }
+        }
+        switch (judgement.getVerdict()) {
             case COMPLETION:
-                databaseUpdateDisposable.add(recordManager.recordCompletion(streamId)
-                        .onErrorComplete().subscribe());
+                writes.add(recordManager.recordCompletion(streamId));
                 break;
             case SKIP:
-                databaseUpdateDisposable.add(recordManager.recordSkip(streamId)
-                        .onErrorComplete().subscribe());
+                writes.add(recordManager.recordSkip(streamId));
                 break;
             default:
                 break;
         }
+        for (final io.reactivex.rxjava3.core.Completable write : writes) {
+            if (playerClosing) {
+                write.onErrorComplete().subscribe();
+            } else {
+                databaseUpdateDisposable.add(write.onErrorComplete().subscribe());
+            }
+        }
         if (isAdaptiveShuffleEnabled()) {
-            runAdaptive(integration ->
-                    integration.onTrackLeft(streamId, position, duration, !unjudged));
+            final Double ratio = judgement.getCompletionRatio();
+            final RawInputsCodec.Outcome result = ratio == null ? null
+                    : new RawInputsCodec.Outcome(ratio, left.trace.getRestarts(),
+                            left.trace.getPartialRewinds(), left.returned);
+            final int serviceId = left.item.getServiceId();
+            final String url = left.item.getUrl();
+            runAdaptive(integration -> integration.onTrackLeft(streamId, serviceId, url, result));
+        }
+    }
+
+    /**
+     * Records the held listen, if any, now that it can no longer be returned to.
+     *
+     * @param playerClosing the player is being torn down (see {@link #recordListen})
+     */
+    private void releaseHeldListen(final boolean playerClosing) {
+        final LeftListen held = returnWindow.release();
+        if (held != null) {
+            recordListen(held, playerClosing);
+        }
+        final LeftListen resume = pendingResume;
+        pendingResume = null;
+        if (resume != null) {
+            recordListen(resume, playerClosing);
+        }
+    }
+
+    /** A listen that has ended, with everything needed to record it later. */
+    private static final class LeftListen {
+        final PlayQueueItem item;
+        final long streamId;
+        final long durationMillis;
+        final long positionMillis;
+        final boolean naturalEnd;
+        final ListenTrace trace;
+        final ListenDisruptions disruptions;
+        final boolean screenOn;
+        final boolean interrupted;
+        final boolean stalled;
+        @Nullable
+        final ListenJudge.Unjudged reason;
+        final boolean pausePending;
+        final boolean returned;
+
+        @SuppressWarnings("checkstyle:ParameterNumber")
+        LeftListen(final PlayQueueItem item, final long streamId, final long durationMillis,
+                   final long positionMillis, final boolean naturalEnd,
+                   final ListenTrace trace, final ListenDisruptions disruptions,
+                   final boolean screenOn, final boolean interrupted, final boolean stalled,
+                   @Nullable final ListenJudge.Unjudged reason, final boolean pausePending,
+                   final boolean returned) {
+            this.item = item;
+            this.streamId = streamId;
+            this.durationMillis = durationMillis;
+            this.positionMillis = positionMillis;
+            this.naturalEnd = naturalEnd;
+            this.trace = trace;
+            this.disruptions = disruptions;
+            this.screenOn = screenOn;
+            this.interrupted = interrupted;
+            this.stalled = stalled;
+            this.reason = reason;
+            this.pausePending = pausePending;
+            this.returned = returned;
+        }
+
+        ListenJudge.Facts facts() {
+            return new ListenJudge.Facts(positionMillis, durationMillis, naturalEnd,
+                    trace.getHeardMillis(), trace.coverage(durationMillis), screenOn,
+                    interrupted, stalled, reason);
+        }
+
+        LeftListen asDetour() {
+            return new LeftListen(item, streamId, durationMillis, positionMillis, naturalEnd,
+                    trace, disruptions, screenOn, interrupted, stalled,
+                    ListenJudge.Unjudged.DETOUR, false, returned);
         }
     }
 
@@ -1576,7 +1799,7 @@ public final class Player implements PlaybackListener, Listener {
             case SKIP:
                 if (playQueue != null) {
                     // A failure, not the user moving on: leaving it is no verdict on it.
-                    currentListenUnjudged = true;
+                    currentUnjudgedReason = ListenJudge.Unjudged.FAILED;
                     playQueue.error();
                 }
                 break;
@@ -1626,7 +1849,7 @@ public final class Player implements PlaybackListener, Listener {
             return;
         }
         if (currentListenHasPlayed) {
-            currentListenUnjudged = true;
+            currentUnjudgedReason = ListenJudge.Unjudged.FAILED;
         } else {
             markAdaptiveUnplayable(playQueue.getItem());
         }
@@ -1690,7 +1913,7 @@ public final class Player implements PlaybackListener, Listener {
                 if (!exoPlayerIsNull() && ListenJudge.isShuffleStartGrace(
                         queueStartItem != null && playQueue.getItem() == queueStartItem,
                         simpleExoPlayer.getCurrentPosition())) {
-                    currentListenUnjudged = true;
+                    currentUnjudgedReason = ListenJudge.Unjudged.QUEUE_START;
                     unjudgedItem = playQueue.getItem();
                 }
                 if (isAdaptiveShuffleEnabled()) {
@@ -1836,6 +2059,7 @@ public final class Player implements PlaybackListener, Listener {
                         saveAccumulatedPlayTime();
                     }
                     resetPlaybackTracking();
+                    beginListen();
                     updateMetadataWith(info);
                     // Initialize tracking for new stream
                     initializePlaybackTracking(info);
@@ -1894,10 +2118,14 @@ public final class Player implements PlaybackListener, Listener {
                 // When player is in single repeat mode and a period transition occurs,
                 // we need to register a view count here since no metadata has changed
                 if (getRepeatMode() == REPEAT_MODE_ONE && newIndex == playQueue.getIndex()) {
-                    // The loop played to its end and the same listen starts over
-                    onListenLeft(currentStreamDuration, true, false);
+                    // The loop played to its end and a new listen of it starts
+                    onListenLeft(currentStreamDuration, true, false, playQueue.getItem());
                     currentListenClosed = false;
                     playbackStartPositionMillis = 0;
+                    currentTrace = new ListenTrace();
+                    currentTrace.start(0);
+                    currentDisruptions = new ListenDisruptions();
+                    currentListenReturned = false;
                     registerStreamViewed();
                     break;
                 }
@@ -1914,6 +2142,9 @@ public final class Player implements PlaybackListener, Listener {
                     // Record seek event (unless it's a restart, which is already recorded)
                     if (!isRestart) {
                         recordSeekEvent(newPosition.positionMs > oldPosition.positionMs);
+                    }
+                    if (discontinuityReason == DISCONTINUITY_REASON_SEEK) {
+                        currentTrace.seek(oldPosition.positionMs, newPosition.positionMs);
                     }
                 }
                 if (isPrepared) {
@@ -1934,7 +2165,8 @@ public final class Player implements PlaybackListener, Listener {
                     // to go mostly unrecorded.
                     onListenLeft(oldPosition.positionMs,
                             discontinuityReason == DISCONTINUITY_REASON_AUTO_TRANSITION,
-                            discontinuityReason == DISCONTINUITY_REASON_REMOVE);
+                            discontinuityReason == DISCONTINUITY_REASON_REMOVE,
+                            playQueue.getItem(newIndex));
                 }
                 // Player index may be invalid when playback is blocked
                 if (getCurrentState() != STATE_BLOCKED && newIndex != playQueue.getIndex()) {
@@ -2480,6 +2712,11 @@ public final class Player implements PlaybackListener, Listener {
             seekToDefault();
         } else {
             saveStreamProgressState();
+            // The listener chose this track. Going back to a track just left is a return
+            // to that listen instead (see onListenLeft).
+            if (isAdaptiveShuffleActive() && !returnWindow.holds(item)) {
+                noteUserChoice(item);
+            }
         }
         playQueue.setIndex(index);
     }
@@ -2975,12 +3212,41 @@ public final class Player implements PlaybackListener, Listener {
         currentListenClosed = false;
         currentListenHasPlayed = false;
         pauseOutcomePending = false;
+        nextPauseBySystem = false;
         reloadingItem = null;
         // Shuffle may be turned on while the first track is still loading; keep the grace
         // for that item when its metadata arrives, and drop it for any other.
         if (playQueue == null || playQueue.getItem() != unjudgedItem) {
-            currentListenUnjudged = false;
+            currentUnjudgedReason = null;
             unjudgedItem = null;
+        }
+        currentListenItem = null;
+    }
+
+    /**
+     * Starts the listen of the item whose stream info just arrived: a fresh one, or the
+     * one the user left moments ago and has come back to, which carries on (coming back
+     * says the listener wanted the track; spec section 4.2).
+     */
+    private void beginListen() {
+        currentListenItem = playQueue == null ? null : playQueue.getItem();
+        final LeftListen resume = pendingResume;
+        pendingResume = null;
+        if (resume != null && resume.item == currentListenItem) {
+            currentTrace = resume.trace;
+            currentDisruptions = resume.disruptions;
+            currentListenReturned = true;
+        } else {
+            if (resume != null) {
+                recordListen(resume, false);
+            }
+            currentTrace = new ListenTrace();
+            currentDisruptions = new ListenDisruptions();
+            currentListenReturned = false;
+        }
+        // Moving on by itself, the player does not report playing again for the new item
+        if (!exoPlayerIsNull() && simpleExoPlayer.isPlaying()) {
+            currentTrace.start(simpleExoPlayer.getCurrentPosition());
         }
     }
 
@@ -3206,6 +3472,10 @@ public final class Player implements PlaybackListener, Listener {
         final int value = intent.getIntExtra(EXTRA_VOLUME_STREAM_VALUE, -1);
         final int previous = intent.getIntExtra(EXTRA_PREV_VOLUME_STREAM_VALUE, -1);
         if (value < 0 || previous < 0 || value == previous) {
+            return;
+        }
+        // Holding or tapping a volume key is one adjustment, not one per step
+        if (!currentDisruptions.acceptVolumeStep(value > previous, System.currentTimeMillis())) {
             return;
         }
         databaseUpdateDisposable.add(

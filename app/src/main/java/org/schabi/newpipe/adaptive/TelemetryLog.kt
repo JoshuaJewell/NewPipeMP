@@ -27,7 +27,8 @@ class TelemetryLog private constructor(context: Context) {
         uncertainty: Double,
         greedy: Boolean,
         nowMillis: Long,
-        baseline: Boolean = false
+        baseline: Boolean = false,
+        chooser: Chooser = if (baseline) Chooser.BASELINE else Chooser.MODEL
     ) {
         val line = buildString {
             append('{')
@@ -38,7 +39,8 @@ class TelemetryLog private constructor(context: Context) {
             append("\"predicted_reward\":").append(predictedReward).append(',')
             append("\"uncertainty\":").append(uncertainty).append(',')
             append("\"exploit\":").append(greedy).append(',')
-            append("\"baseline\":").append(baseline)
+            append("\"baseline\":").append(chooser == Chooser.BASELINE).append(',')
+            append("\"chooser\":\"").append(chooser.name.lowercase()).append('"')
             append('}')
         }
         appendLine(line)

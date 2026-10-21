@@ -34,4 +34,7 @@ interface AdaptiveShuffleStore {
     fun countResolvedForStreamBetween(streamId: Long, fromMillis: Long, toMillis: Long): Int
 
     fun getStreamTitle(streamId: Long): String?
+
+    // Uploader names by stream id, for those found.
+    fun getStreamUploaders(streamIds: Collection<Long>): Map<Long, String?>
 }
