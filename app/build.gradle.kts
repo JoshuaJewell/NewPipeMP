@@ -236,6 +236,7 @@ dependencies {
 
     // Checkstyle
     checkstyle(libs.puppycrawl.checkstyle)
+    debugImplementation(libs.leakcanary)
     ktlint(libs.pinterest.ktlint)
 
     // AndroidX
