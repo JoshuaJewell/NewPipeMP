@@ -31,6 +31,20 @@
     <string name="adaptive_shuffle_debug_view_enabled_key">adaptive_shuffle_debug_view_enabled_key</string>
     <string name="adaptive_shuffle_debug_screen_key">adaptive_shuffle_debug_screen_key</string>
     <string name="adaptive_shuffle_thompson_key">adaptive_shuffle_thompson_key</string>
+    <string name="adaptive_shuffle_baseline_share_key">adaptive_shuffle_baseline_share_key</string>
+    <string name="adaptive_shuffle_baseline_share_default" translatable="false">20</string>
+    <string-array name="adaptive_shuffle_baseline_share_description">
+        <item>@string/adaptive_shuffle_baseline_off</item>
+        <item>@string/adaptive_shuffle_baseline_one_in_ten</item>
+        <item>@string/adaptive_shuffle_baseline_one_in_five</item>
+        <item>@string/adaptive_shuffle_baseline_one_in_three</item>
+    </string-array>
+    <string-array name="adaptive_shuffle_baseline_share_values" translatable="false">
+        <item>0</item>
+        <item>10</item>
+        <item>20</item>
+        <item>33</item>
+    </string-array>
     <string name="rating_statistics_key">rating_statistics_key</string>
 
     <string-array name="weighted_shuffle_unrated_weight_description">

@@ -24,7 +24,9 @@ class AdaptivePlayerIntegration(
     private val selectionMode: () -> SelectionMode = { SelectionMode.UCB },
     private val rng: Random = Random(),
     private val clock: () -> Long = System::currentTimeMillis,
-    private val conditions: () -> ListeningConditions = { ListeningConditions.UNKNOWN }
+    private val conditions: () -> ListeningConditions = { ListeningConditions.UNKNOWN },
+    // Share of picks drawn at random instead, to compare the model against (ArmComparison).
+    private val baselineShare: () -> Double = { 0.0 }
 ) {
     // Every method here runs on AdaptiveShuffleHolder.SCHEDULER, a single thread, so
     // resolutions and picks happen in the order the player asked for them.
@@ -138,7 +140,8 @@ class AdaptivePlayerIntegration(
             return sampledItems[rng.nextInt(sampledItems.size)]
         }
         val context = buildContext(originOf(playQueue))
-        val decision = engine.chooseNext(pairs.map { it.second }, context, selectionMode())
+        val baseline = rng.nextDouble() < baselineShare()
+        val decision = engine.chooseNext(pairs.map { it.second }, context, selectionMode(), baseline)
         rememberScore(decision.score, decision.greedy)
         val chosenStreamId = decision.chosen.streamId
         val chosenItem = pairs.first { it.second === decision.chosen }.first
@@ -156,6 +159,7 @@ class AdaptivePlayerIntegration(
             predictedReward = decision.score.predictedReward,
             uncertainty = decision.score.uncertainty,
             greedy = decision.greedy,
+            baseline = decision.baseline,
             nowMillis = now
         )
         return chosenItem

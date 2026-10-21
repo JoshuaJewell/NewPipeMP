@@ -197,4 +197,31 @@ class AdaptiveShuffleEngineTest {
         val folded = RawInputsCodec.decode(store.events.values.single().rawInputsBlob)
         assertEquals(RawInputsCodec.Outcome(0.6, 1), folded.outcome)
     }
+
+    @Test fun `a baseline pick is random, flagged, kept through resolution and still trains`() {
+        val store = InMemoryStore()
+        val e = AdaptiveShuffleEngine(store, FakeClock(), Random(3), discount = 1.0)
+        val candidates = (1L..6L).map { fixtureItem(it, uploader = "U$it", durationSeconds = 100L + 60L * it) }
+        val picks = (1..40).map { e.chooseNext(candidates, fixtureContext(), baseline = true) }
+        assertTrue(picks.all { it.baseline })
+        assertTrue("baseline should spread picks", picks.map { it.chosen.streamId }.toSet().size > 3)
+        val chosen = picks.last().chosen.streamId
+        e.captureSnapshot(chosen, 0)
+        e.resolveOutcome(chosen, 90_000L, 100_000L, 0)
+        val resolved = store.events.values.single { it.resolved }
+        val decoded = RawInputsCodec.decode(resolved.rawInputsBlob)
+        assertTrue(decoded.baseline)
+        assertEquals(0.9, decoded.outcome!!.completionRatio, 1e-9)
+        assertEquals(1L, e.numEvents())
+        val report = e.armComparison()
+        assertEquals(1, report.baseline!!.listens)
+        assertNull(report.model)
+    }
+
+    @Test fun `model picks are not flagged as baseline`() {
+        val store = InMemoryStore()
+        val e = engine(store)
+        assertFalse(e.chooseNext(listOf(fixtureItem(1)), fixtureContext()).baseline)
+        assertFalse(RawInputsCodec.decode(store.events.values.single().rawInputsBlob).baseline)
+    }
 }

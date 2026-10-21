@@ -200,6 +200,18 @@ class RawInputsCodecTest {
         assertEquals(item, decoded.item)
     }
 
+    @Test fun `baseline flag survives an outcome and keeps every greedy value`() {
+        val ctx = fixtureContext()
+        val item = fixtureItem(3)
+        for (greedy in listOf(true, false, null)) {
+            val bytes = RawInputsCodec.encode(ctx, item, greedy = greedy, baseline = true)
+            val decoded = RawInputsCodec.decode(RawInputsCodec.withOutcome(bytes, RawInputsCodec.Outcome(0.5, 0)))
+            assertEquals(true, decoded.baseline)
+            assertEquals(greedy, decoded.greedy)
+        }
+        assertEquals(false, RawInputsCodec.decode(RawInputsCodec.encode(ctx, item, greedy = true)).baseline)
+    }
+
     @Test fun `v2 blobs still decode and upgrade when an outcome is attached`() {
         val ctx = fixtureContext()
         val item = fixtureItem(3)

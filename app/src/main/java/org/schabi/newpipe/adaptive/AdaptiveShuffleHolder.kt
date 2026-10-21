@@ -42,6 +42,13 @@ object AdaptiveShuffleHolder {
                 val prefs = PreferenceManager.getDefaultSharedPreferences(appContext)
                 if (prefs.getBoolean(thompsonKey, false)) SelectionMode.THOMPSON else SelectionMode.UCB
             }
+            val baselineKey = appContext.getString(R.string.adaptive_shuffle_baseline_share_key)
+            val baselineDefault = appContext.getString(R.string.adaptive_shuffle_baseline_share_default)
+            val baselineShare = {
+                val prefs = PreferenceManager.getDefaultSharedPreferences(appContext)
+                val percent = prefs.getString(baselineKey, baselineDefault)?.toIntOrNull() ?: 0
+                percent.coerceIn(0, 100) / 100.0
+            }
             val conditions = ListeningConditionsReader(appContext)
             val created = AdaptivePlayerIntegration(
                 engine,
@@ -49,7 +56,8 @@ object AdaptiveShuffleHolder {
                 repository,
                 telemetry,
                 selectionMode,
-                conditions = conditions::read
+                conditions = conditions::read,
+                baselineShare = baselineShare
             )
             val init = engine.initialise()
             if (init is AdaptiveShuffleEngine.InitialiseResult.SchemaMismatch) {

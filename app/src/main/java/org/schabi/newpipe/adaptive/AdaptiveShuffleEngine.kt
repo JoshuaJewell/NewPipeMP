@@ -40,7 +40,9 @@ class AdaptiveShuffleEngine(
         val pendingEventId: Long,
         // True when the pick is also the candidate with the highest mean prediction, i.e.
         // the model chose what it already believed best. False means exploration chose it.
-        val greedy: Boolean
+        val greedy: Boolean,
+        // Drawn uniformly at random rather than by the model (spec section 7.5).
+        val baseline: Boolean = false
     )
 
     data class RebuildReport(
@@ -78,7 +80,8 @@ class AdaptiveShuffleEngine(
     fun chooseNext(
         candidates: List<CandidateItem>,
         context: DecisionContext,
-        mode: SelectionMode = SelectionMode.UCB
+        mode: SelectionMode = SelectionMode.UCB,
+        baseline: Boolean = false
     ): DecisionResult {
         require(candidates.isNotEmpty()) { "candidates must not be empty" }
         return synchronized(lock) {
@@ -87,12 +90,18 @@ class AdaptiveShuffleEngine(
             }
             val scores = Array(candidates.size) { i -> linucb.score(scaledVectors[i]) }
             val greedyIdx = scores.indices.maxByOrNull { scores[it].predictedReward } ?: 0
-            val chosenIdx = when (mode) {
-                SelectionMode.UCB -> scores.indices.maxByOrNull { scores[it].total } ?: 0
+            // A baseline pick is still scored, so its prediction can be compared with its
+            // outcome, and still trains the model: a uniform pick is unbiased evidence.
+            val chosenIdx = if (baseline) {
+                rng.nextInt(candidates.size)
+            } else {
+                when (mode) {
+                    SelectionMode.UCB -> scores.indices.maxByOrNull { scores[it].total } ?: 0
 
-                SelectionMode.THOMPSON -> {
-                    val theta = linucb.sampleTheta(rng)
-                    scaledVectors.indices.maxByOrNull { LinUCB.dot(theta, scaledVectors[it]) } ?: 0
+                    SelectionMode.THOMPSON -> {
+                        val theta = linucb.sampleTheta(rng)
+                        scaledVectors.indices.maxByOrNull { LinUCB.dot(theta, scaledVectors[it]) } ?: 0
+                    }
                 }
             }
             val chosen = candidates[chosenIdx]
@@ -101,14 +110,14 @@ class AdaptiveShuffleEngine(
                 streamId = chosen.streamId,
                 chosenAt = clock(),
                 featureVectorBlob = RawInputsCodec.encodeFeatureVector(scaledVectors[chosenIdx]),
-                rawInputsBlob = RawInputsCodec.encode(context, chosen, greedy = greedy),
+                rawInputsBlob = RawInputsCodec.encode(context, chosen, greedy = greedy, baseline = baseline),
                 predictedReward = scores[chosenIdx].predictedReward,
                 uncertainty = scores[chosenIdx].uncertainty,
                 candidateCount = candidates.size,
                 candidateStreamIdsBlob = RawInputsCodec.encodeStreamIds(candidates.map { it.streamId })
             )
             val eventId = store.insertPending(event)
-            DecisionResult(chosen, scores[chosenIdx], eventId, greedy)
+            DecisionResult(chosen, scores[chosenIdx], eventId, greedy, baseline)
         }
     }
 
@@ -281,17 +290,19 @@ class AdaptiveShuffleEngine(
         val predictedReward: Double,
         val uncertainty: Double,
         val reward: Double?,
-        val exploit: Boolean
+        val exploit: Boolean,
+        val baseline: Boolean = false
     )
 
     fun recentDecisions(limit: Int = 20): List<RecentDecision> {
         val rows = store.getRecent(limit)
         return rows.map { event ->
-            val greedy = try {
-                RawInputsCodec.decode(event.rawInputsBlob).greedy
+            val decoded = try {
+                RawInputsCodec.decode(event.rawInputsBlob)
             } catch (t: RuntimeException) {
                 null
             }
+            val greedy = decoded?.greedy
             RecentDecision(
                 chosenAt = event.chosenAt,
                 streamId = event.streamId,
@@ -300,7 +311,8 @@ class AdaptiveShuffleEngine(
                 uncertainty = event.uncertainty,
                 reward = event.reward,
                 // Older events lack the greedy flag; fall back to the v1 heuristic.
-                exploit = greedy ?: (event.predictedReward > event.uncertainty)
+                exploit = greedy ?: (event.predictedReward > event.uncertainty),
+                baseline = decoded?.baseline ?: false
             )
         }
     }
@@ -318,5 +330,22 @@ class AdaptiveShuffleEngine(
             RepetitionMetrics.Served(e.chosenAt, e.streamId, uploader)
         }
         return RepetitionMetrics.compute(served)
+    }
+
+    // Model picks against baseline picks, over every resolved decision since the first
+    // baseline pick (spec section 7.5).
+    fun armComparison(): ArmComparison.Report {
+        val rows = store.getAllResolvedOrdered()
+        val listens = rows.mapNotNull { e ->
+            val decoded = try {
+                RawInputsCodec.decode(e.rawInputsBlob)
+            } catch (t: RuntimeException) {
+                return@mapNotNull null
+            }
+            val ratio = e.completionRatio ?: decoded.outcome?.completionRatio ?: return@mapNotNull null
+            val reward = e.reward ?: return@mapNotNull null
+            ArmComparison.Listen(e.chosenAt, decoded.baseline, reward, ratio)
+        }
+        return ArmComparison.compute(listens)
     }
 }

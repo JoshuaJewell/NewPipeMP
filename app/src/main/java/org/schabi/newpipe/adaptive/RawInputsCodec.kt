@@ -29,6 +29,9 @@ import java.nio.charset.StandardCharsets
 //      Neither has the v3 trailer.
 //   7: the v2 body, the v5 block, then the v3 trailer. Numbered past the v1.1 build's
 //      versions so its blobs are never mistaken for this layout.
+//      The greedy byte's 0x10 bit marks a baseline pick: one drawn uniformly at random
+//      from the candidates instead of by the model (AdaptiveShuffleConfig.BASELINE_SHARE).
+//      Blobs written before it existed never set it.
 object RawInputsCodec {
     private const val VERSION: Byte = 7
     private const val VERSION_2: Byte = 2
@@ -37,6 +40,8 @@ object RawInputsCodec {
     private const val LEGACY_5: Byte = 5
     private const val LEGACY_6: Byte = 6
     private const val LEGACY_4_UNDECODED_BYTES = 8
+    private const val BASELINE_BIT = 0x10
+    private const val GREEDY_MASK = 0x0F
 
     data class Outcome(val completionRatio: Double, val restartDelta: Int)
 
@@ -45,21 +50,23 @@ object RawInputsCodec {
         val item: CandidateItem,
         // null when unknown (v2 blobs, or decisions made before the flag existed).
         val greedy: Boolean? = null,
-        val outcome: Outcome? = null
+        val outcome: Outcome? = null,
+        val baseline: Boolean = false
     )
 
     // Re-encodes an existing blob with an outcome attached, upgrading it to the current
     // version on the way through.
     fun withOutcome(bytes: ByteArray, outcome: Outcome): ByteArray {
         val d = decode(bytes)
-        return encode(d.context, d.item, d.greedy, outcome)
+        return encode(d.context, d.item, d.greedy, outcome, d.baseline)
     }
 
     fun encode(
         context: DecisionContext,
         item: CandidateItem,
         greedy: Boolean? = null,
-        outcome: Outcome? = null
+        outcome: Outcome? = null,
+        baseline: Boolean = false
     ): ByteArray {
         val prevUploader = context.previousUploader?.toByteArray(StandardCharsets.UTF_8)
         val uploader = item.uploader?.toByteArray(StandardCharsets.UTF_8)
@@ -164,13 +171,12 @@ object RawInputsCodec {
         buf.putInt(e.leaveCount)
         buf.putDouble(e.leaveMean)
         buf.putDouble(e.leaveM2)
-        buf.put(
-            when (greedy) {
-                false -> 0.toByte()
-                true -> 1.toByte()
-                null -> 2.toByte()
-            }
-        )
+        val greedyCode = when (greedy) {
+            false -> 0
+            true -> 1
+            null -> 2
+        }
+        buf.put((greedyCode or (if (baseline) BASELINE_BIT else 0)).toByte())
         if (outcome != null) {
             buf.put(1.toByte())
             buf.putDouble(outcome.completionRatio)
@@ -257,8 +263,11 @@ object RawInputsCodec {
         }
         var greedy: Boolean? = null
         var outcome: Outcome? = null
+        var baseline = false
         if (v == VERSION_3 || v == VERSION) {
-            greedy = when (buf.get().toInt()) {
+            val code = buf.get().toInt()
+            baseline = v == VERSION && (code and BASELINE_BIT) != 0
+            greedy = when (code and GREEDY_MASK) {
                 0 -> false
                 1 -> true
                 else -> null
@@ -300,7 +309,8 @@ object RawInputsCodec {
                 listenEvents = events
             ),
             greedy = greedy,
-            outcome = outcome
+            outcome = outcome,
+            baseline = baseline
         )
     }
 

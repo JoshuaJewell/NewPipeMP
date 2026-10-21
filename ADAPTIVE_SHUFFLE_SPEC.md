@@ -331,6 +331,15 @@ Keep the synthetic-regret test (sub-linear regret over 5000 steps) and extend it
 - Debug view shows the §7.1 metrics.
 - Plain and rating-weighted shuffle modes are unchanged.
 
+### 7.5 Live comparison with random order
+
+Replay (7.2) is biased towards the policy that made the history, so it cannot say whether the model beats plain shuffle. A live control can.
+
+- A share of picks (setting "Random picks for comparison": off, 1 in 10, 1 in 5 or 1 in 3; default 1 in 5) is drawn uniformly at random from the same eligible candidates the model scores. Recency exclusion and uploader spacing apply to both arms, so the comparison measures only the model's choice among them.
+- A random pick is stored like any decision, with the 0x10 bit of the greedy byte set (`RawInputsCodec`), and is scored, resolved and used to train the model as usual. Being uniform, it is unbiased evidence of the kind the model's own picks cannot give.
+- The debug view's "Model against random" section (`ArmComparison`) compares the arms over every resolved decision since the first random pick: listens, mean reward, mean completion ratio, share finished (at least 0.85) and share skipped early (below 0.15), and the model's reward lift with a 95% interval (normal approximation, unequal variances). The verdict needs 30 listens per arm, and says the model is better or worse only when the interval excludes zero.
+- Random picks cost some listening quality while the comparison runs; turn the share down or off once it has an answer.
+
 ---
 
 ## 8. Audio-feature pipeline

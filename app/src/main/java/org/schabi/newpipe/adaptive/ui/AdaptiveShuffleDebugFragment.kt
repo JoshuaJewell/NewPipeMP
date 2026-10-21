@@ -6,6 +6,7 @@ package org.schabi.newpipe.adaptive.ui
 
 import android.graphics.Color
 import android.os.Bundle
+import android.text.format.DateUtils
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -21,10 +22,12 @@ import io.reactivex.rxjava3.schedulers.Schedulers
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import org.schabi.newpipe.R
 import org.schabi.newpipe.adaptive.AdaptivePlayerIntegration
 import org.schabi.newpipe.adaptive.AdaptiveShuffleEngine
 import org.schabi.newpipe.adaptive.AdaptiveShuffleHolder
+import org.schabi.newpipe.adaptive.ArmComparison
 import org.schabi.newpipe.adaptive.FeatureSchema
 import org.schabi.newpipe.adaptive.RepetitionMetrics
 
@@ -39,6 +42,7 @@ class AdaptiveShuffleDebugFragment : Fragment() {
     private val negativeColour = Color.parseColor("#C62828")
     private val exploitChipColour = Color.parseColor("#1565C0")
     private val exploreChipColour = Color.parseColor("#EF6C00")
+    private val randomChipColour = Color.parseColor("#616161")
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -110,6 +114,15 @@ class AdaptiveShuffleDebugFragment : Fragment() {
                 }, { _ -> })
         )
 
+        disposables.add(
+            Single.fromCallable { engine.armComparison() }
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe({ report ->
+                    renderComparison(view, report)
+                }, { _ -> })
+        )
+
         // Recent decisions involve DB reads for title resolution; do off main thread.
         disposables.add(
             Single.fromCallable { engine.recentDecisions(20) }
@@ -120,6 +133,51 @@ class AdaptiveShuffleDebugFragment : Fragment() {
                 }, { _ -> })
         )
     }
+
+    private fun renderComparison(view: View, report: ArmComparison.Report) {
+        val caption = view.findViewById<TextView>(R.id.compareCaption)
+        val body = view.findViewById<TextView>(R.id.compareBody)
+        val since = report.since
+        if (since == null || report.baseline == null) {
+            caption.text = getString(R.string.adaptive_shuffle_compare_empty)
+            body.text = ""
+            return
+        }
+        caption.text = getString(
+            R.string.adaptive_shuffle_compare_caption,
+            DateUtils.getRelativeTimeSpanString(since, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
+        )
+        val lines = ArrayList<String>()
+        report.model?.let { lines += armLine(getString(R.string.adaptive_shuffle_compare_model), it) }
+        lines += armLine(getString(R.string.adaptive_shuffle_random), report.baseline)
+        lines += ""
+        val lift = report.rewardLift
+        val half = report.rewardLiftHalfWidth
+        if (lift != null && half != null) {
+            lines += getString(R.string.adaptive_shuffle_compare_lift, lift, lift - half, lift + half)
+        }
+        lines += when (report.verdict) {
+            ArmComparison.Verdict.NOT_ENOUGH_DATA ->
+                getString(R.string.adaptive_shuffle_compare_need_more, ArmComparison.MIN_LISTENS_PER_ARM)
+
+            ArmComparison.Verdict.MODEL_BETTER -> getString(R.string.adaptive_shuffle_compare_model_better)
+
+            ArmComparison.Verdict.BASELINE_BETTER -> getString(R.string.adaptive_shuffle_compare_baseline_better)
+
+            ArmComparison.Verdict.NO_CLEAR_DIFFERENCE -> getString(R.string.adaptive_shuffle_compare_no_difference)
+        }
+        body.text = lines.joinToString("\n")
+    }
+
+    private fun armLine(name: String, arm: ArmComparison.Arm): String = getString(
+        R.string.adaptive_shuffle_compare_arm,
+        name,
+        arm.listens,
+        arm.meanReward,
+        (arm.meanCompletion * 100).roundToInt(),
+        (arm.completedShare * 100).roundToInt(),
+        (arm.earlySkipShare * 100).roundToInt()
+    )
 
     private fun renderMetrics(view: View, report: RepetitionMetrics.Report, titles: Map<Long, String>) {
         val caption = view.findViewById<TextView>(R.id.metricsCaption)
@@ -230,7 +288,10 @@ class AdaptiveShuffleDebugFragment : Fragment() {
             }
 
             val chip = row.findViewById<TextView>(R.id.decisionChip)
-            if (decision.exploit) {
+            if (decision.baseline) {
+                chip.text = getString(R.string.adaptive_shuffle_random)
+                chip.setBackgroundColor(randomChipColour)
+            } else if (decision.exploit) {
                 chip.text = getString(R.string.adaptive_shuffle_exploit)
                 chip.setBackgroundColor(exploitChipColour)
             } else {
