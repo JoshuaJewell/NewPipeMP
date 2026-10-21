@@ -1190,6 +1190,11 @@ public final class Player implements PlaybackListener, Listener {
                     + "playWhenReady = [" + playWhenReady + "], "
                     + "reason = [" + reason + "]");
         }
+        if (!playWhenReady && reason == com.google.android.exoplayer2.Player
+                .PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
+            // Lost audio focus for good (another app took over): the system's pause
+            onSystemPause();
+        }
         final int playbackState = exoPlayerIsNull()
                 ? com.google.android.exoplayer2.Player.STATE_IDLE
                 : simpleExoPlayer.getPlaybackState();
@@ -1441,14 +1446,6 @@ public final class Player implements PlaybackListener, Listener {
     private void onSystemPause() {
         currentDisruptions.onExternalPause(System.currentTimeMillis());
         nextPauseBySystem = true;
-    }
-
-    @Override
-    public void onPlayWhenReadyChanged(final boolean playWhenReady, final int reason) {
-        if (!playWhenReady && reason == com.google.android.exoplayer2.Player
-                .PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
-            onSystemPause();
-        }
     }
 
     @Override
