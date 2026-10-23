@@ -14,11 +14,20 @@ object AdaptiveShuffleConfig {
     // extra exploration bonus of a never-played track 1 / sqrt(8), about 0.35.
     const val TRACK_OFFSET_LAMBDA: Double = 8.0
 
+    // Prior precision of a track's own recovery slope: how much more (or less) it is
+    // wanted per standard deviation of time since it last played, beyond the shared
+    // days_since_played weight. Tighter than the offset's, as a slope needs listens at
+    // varied gaps to show; until then a track recovers like the library as a whole.
+    const val TRACK_RECOVERY_LAMBDA: Double = 16.0
+
     // Per-update discount on past evidence (spec section 6, "ways not yet discussed").
     // Each update shrinks earlier evidence by this factor, so the model's memory is
-    // roughly 1 / (1 - gamma) events (about 1000 here). Tastes drift, and early decisions
-    // made by a worse policy should not anchor the model forever. 1.0 disables it.
-    const val DISCOUNT_GAMMA: Double = 0.999
+    // roughly 1 / (1 - gamma) events: about 3,300 here, so an event 1,000 listens ago
+    // still counts 74%. Tastes drift, and early decisions made by a worse policy should
+    // not anchor the model forever, but per-track evidence builds slowly (a track heard
+    // twice a month), and random picks now guard against the policy's own bias. Counted
+    // in listens, not time: a month away forgets nothing. 1.0 disables it.
+    const val DISCOUNT_GAMMA: Double = 0.9997
 
     // Continuous reward (spec section 6.4): base = SLOPE * cr + OFFSET, neutral near 0.62.
     const val REWARD_SLOPE: Double = 1.78
@@ -59,6 +68,10 @@ object AdaptiveShuffleConfig {
     const val COLD_START_MIN_PLAYS: Int = 3
     const val COLD_START_SKIP_RATIO: Double = 0.2
     const val COLD_START_COMPLETION_RATIO: Double = 0.5
+
+    // Mean leave point given to a track without enough recorded listens. Near the played
+    // tracks' usual value, so that has_listen_history, not this value, says "no history".
+    const val COLD_START_LEAVE_POINT: Double = 0.8
     const val NEVER_PLAYED_DAYS_DEFAULT: Double = 30.0
 
     // Candidate selection (spec sections 6.2 and 9.2).

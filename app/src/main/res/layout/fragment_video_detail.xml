@@ -606,6 +606,17 @@
                             android:visibility="gone"
                             tools:text="Adaptive shuffle: 7/10 in this queue (predicted +0.31, its own +0.08)"
                             tools:visibility="visible" />
+
+                        <org.schabi.newpipe.views.NewPipeTextView
+                            android:id="@+id/detail_model_breakdown"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:paddingTop="4dp"
+                            android:paddingStart="8dp"
+                            android:lineSpacingMultiplier="1.15"
+                            android:textAppearance="?android:attr/textAppearanceSmall"
+                            android:textColor="?android:attr/textColorSecondary"
+                            android:visibility="gone" />
                     </LinearLayout>
 
                     <View

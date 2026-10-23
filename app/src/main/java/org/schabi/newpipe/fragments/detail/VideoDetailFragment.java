@@ -71,7 +71,9 @@ import org.schabi.newpipe.App;
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.database.stream.model.StreamEntity;
 import org.schabi.newpipe.adaptive.AdaptivePlayerIntegration;
+import org.schabi.newpipe.adaptive.AdaptiveShuffleEngine;
 import org.schabi.newpipe.adaptive.AdaptiveShuffleHolder;
+import org.schabi.newpipe.adaptive.FeatureSchema;
 import org.schabi.newpipe.databinding.FragmentVideoDetailBinding;
 import org.schabi.newpipe.download.DownloadDialog;
 import org.schabi.newpipe.error.ErrorInfo;
@@ -238,6 +240,7 @@ public final class VideoDetailFragment
     private TextView ratingValueText;
     private LinearLayout ratingPanel;
     private TextView modelRatingText;
+    private TextView modelBreakdownText;
     private Integer currentRating = null;
 
     private ContentObserver settingsContentObserver;
@@ -572,6 +575,7 @@ public final class VideoDetailFragment
      */
     private void showModelRating(@Nullable final StreamInfo info) {
         modelRatingText.setVisibility(View.GONE);
+        modelBreakdownText.setVisibility(View.GONE);
         if (info == null || currentRating == null || !PreferenceManager
                 .getDefaultSharedPreferences(requireContext())
                 .getBoolean(getString(R.string.adaptive_shuffle_enabled_key), false)) {
@@ -598,8 +602,53 @@ public final class VideoDetailFragment
                                     s.getPredicted(), s.getOwnOffset())
                             : getString(R.string.model_rating_alone, s.getPredicted(),
                                     s.getOwnOffset()));
+                    modelBreakdownText.setText(describeBreakdown(s.getBreakdown()));
                     modelRatingText.setVisibility(View.VISIBLE);
                 }, throwable -> Log.w(TAG, "Could not rate with adaptive shuffle", throwable)));
+    }
+
+    /**
+     * The model's score for a track taken apart, largest parts first.
+     *
+     * @param b the breakdown
+     * @return lines of text
+     */
+    private String describeBreakdown(@NonNull final AdaptiveShuffleEngine.Breakdown b) {
+        final int shown = 8;
+        final java.util.List<kotlin.Pair<String, Double>> parts = new java.util.ArrayList<>();
+        double baseline = 0.0;
+        for (final kotlin.Pair<String, Double> p : b.getFeatures()) {
+            if ("bias".equals(p.getFirst())) {
+                baseline = p.getSecond();
+            } else if (Math.abs(p.getSecond()) >= 0.005) {
+                parts.add(p);
+            }
+        }
+        parts.sort((p, q) -> Double.compare(Math.abs(q.getSecond()), Math.abs(p.getSecond())));
+        final StringBuilder sb = new StringBuilder();
+        sb.append(getString(R.string.model_breakdown_baseline, baseline));
+        double others = 0.0;
+        for (int i = 0; i < parts.size(); i++) {
+            final kotlin.Pair<String, Double> p = parts.get(i);
+            if (i < shown) {
+                final String name = FeatureSchema.INSTANCE.getDescriptions().get(p.getFirst());
+                sb.append('\n').append(getString(R.string.model_breakdown_row,
+                        name != null ? name : p.getFirst(), p.getSecond()));
+            } else {
+                others += p.getSecond();
+            }
+        }
+        if (parts.size() > shown) {
+            sb.append('\n').append(getString(R.string.model_breakdown_others, others));
+        }
+        sb.append('\n').append(getString(R.string.model_breakdown_own, b.getOwnOffset()));
+        final Double days = b.getDaysSincePlayed();
+        sb.append('\n').append(days != null
+                ? getString(R.string.model_breakdown_recovery, days, b.getOwnRecovery())
+                : getString(R.string.model_breakdown_recovery_unknown, b.getOwnRecovery()));
+        sb.append('\n').append(getString(R.string.model_breakdown_total, b.getPredicted(),
+                b.getUncertainty()));
+        return sb.toString();
     }
 
     private void setOnLongClickListeners() {
@@ -711,6 +760,9 @@ public final class VideoDetailFragment
         ratingSlider = binding.detailRatingSlider;
         ratingValueText = binding.detailRatingValue;
         modelRatingText = binding.detailModelRating;
+        modelBreakdownText = binding.detailModelBreakdown;
+        modelRatingText.setOnClickListener(v -> modelBreakdownText.setVisibility(
+                modelBreakdownText.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE));
 
         // Setup rating slider listener
         ratingSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {

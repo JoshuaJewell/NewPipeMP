@@ -126,7 +126,12 @@ class AdaptiveShuffleDebugFragment : Fragment() {
         view.findViewById<TextView>(R.id.eventsCount).text =
             getString(R.string.adaptive_shuffle_events_label, nEvents)
 
-        renderTheta(view, engine.theta())
+        disposables.add(
+            Single.fromCallable { engine.theta() to engine.featureSpread() }
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe({ (theta, spread) -> renderTheta(view, theta, spread) }, { _ -> })
+        )
 
         disposables.add(
             Single.fromCallable {
@@ -303,20 +308,28 @@ class AdaptiveShuffleDebugFragment : Fragment() {
         body.text = lines.joinToString("\n")
     }
 
-    private fun renderTheta(view: View, theta: DoubleArray) {
+    // Ranked by typical effect, weight times how much the feature varies across recent
+    // decisions, which compares across features where raw weights do not: a feature that
+    // barely varies needs a large weight to matter. The bias does not vary; it is shown
+    // first, as the baseline the others move from.
+    private fun renderTheta(view: View, theta: DoubleArray, spread: DoubleArray) {
         val container = view.findViewById<LinearLayout>(R.id.thetaList)
         container.removeAllViews()
         val inflater = LayoutInflater.from(container.context)
         val rows = theta.indices
             .map { i ->
                 val name = FeatureSchema.names[i]
-                Triple(name, FeatureSchema.descriptions[name] ?: "", theta[i])
+                Triple(i, FeatureSchema.descriptions[name] ?: "", theta[i])
             }
-            .sortedByDescending { abs(it.third) }
+            .sortedWith(compareBy({ it.first != FeatureSchema.BIAS }, { -abs(it.third) * spread[it.first] }))
 
-        for ((name, description, weight) in rows) {
+        for ((index, description, weight) in rows) {
             val row = inflater.inflate(R.layout.item_adaptive_shuffle_weight, container, false)
-            row.findViewById<TextView>(R.id.weightDescription).text = description
+            row.findViewById<TextView>(R.id.weightDescription).text = if (index == FeatureSchema.BIAS) {
+                description
+            } else {
+                getString(R.string.adaptive_shuffle_weight_effect, description, abs(weight) * spread[index])
+            }
             val valueView = row.findViewById<TextView>(R.id.weightValue)
             valueView.text = "%+.4f".format(weight)
             valueView.setTextColor(

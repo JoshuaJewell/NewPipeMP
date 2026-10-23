@@ -132,7 +132,8 @@
     <string name="adaptive_shuffle_rebuild">Rebuild from history</string>
     <string name="adaptive_shuffle_no_events">No decisions recorded yet</string>
     <string name="adaptive_shuffle_events_label">Events ingested: %1$d</string>
-    <string name="adaptive_shuffle_theta_label">Learnt weights (largest first)</string>
+    <string name="adaptive_shuffle_theta_label">Learnt weights (by typical effect)</string>
+    <string name="adaptive_shuffle_weight_effect">%1$s (typical effect ±%2$.2f)</string>
     <string name="adaptive_shuffle_theta_caption">Positive numbers mean the feature predicts engagement; negative means it predicts a skip. Magnitude is influence on the next pick.</string>
     <string name="adaptive_shuffle_recent_label">Recent decisions</string>
     <string name="adaptive_shuffle_recent_caption">Newest first. EXPLOIT = picked for expected appeal; EXPLORE = picked to learn. R is the actual reward once the track resolved.</string>
@@ -582,8 +583,15 @@
     <string name="adaptive_shuffle_export">Export</string>
     <string name="adaptive_shuffle_exported">Adaptive shuffle data exported</string>
     <string name="adaptive_shuffle_export_failed">Export failed: %1$s</string>
-    <string name="model_rating_in_queue">Adaptive shuffle: %1$d/10 in this queue (predicted %2$+.2f, its own %3$+.2f)</string>
-    <string name="model_rating_alone">Adaptive shuffle: predicted %1$+.2f, its own %2$+.2f</string>
+    <string name="model_rating_in_queue">Adaptive shuffle: %1$d/10 in this queue (predicted %2$+.2f, its own %3$+.2f). Tap for why</string>
+    <string name="model_rating_alone">Adaptive shuffle: predicted %1$+.2f, its own %2$+.2f. Tap for why</string>
+    <string name="model_breakdown_baseline">Baseline: %1$+.2f</string>
+    <string name="model_breakdown_row">%1$s: %2$+.2f</string>
+    <string name="model_breakdown_others">Everything else: %1$+.2f</string>
+    <string name="model_breakdown_own">This track\'s own adjustment: %1$+.2f</string>
+    <string name="model_breakdown_recovery">This track\'s own recovery (%1$.0f days since played): %2$+.2f</string>
+    <string name="model_breakdown_recovery_unknown">This track\'s own recovery: %1$+.2f</string>
+    <string name="model_breakdown_total">Predicted %1$+.2f, give or take %2$.2f</string>
     <string name="thread_dump_now_title">Save thread dump now</string>
     <string name="thread_dump_now_summary">For when playback or a screen misbehaves without a stall being detected. Saves what every thread is doing and what the player did recently, to Stall reports.</string>
     <string name="thread_dump_saved">Thread dump saved to Stall reports</string>

@@ -29,6 +29,9 @@ object FeatureSchema {
     //     of them were collected alongside.
     // It also puts user_rating_norm on the 1 to 10 scale ratings are stored in (it assumed
     // 1 to 5, so a full rating encoded as 3.5), and divides rating_vs_uploader by 9.
+    // Schema v6 adds has_listen_history, gives unplayed tracks a usual mean leave point
+    // instead of 0.5, and scales mean_leave_point and leave_point_spread. The leave point
+    // had been standing in for "has history", tied up with the bias (spec section 5, D11).
     val names: List<String> = listOf(
         "hour_sin", "hour_cos", "dow_sin", "dow_cos",
         "session_position", "recent_skip_rate",
@@ -45,6 +48,7 @@ object FeatureSchema {
         "pause_resumes_per_listen", "pause_skips_per_listen",
         "volume_ups_per_listen", "volume_downs_per_listen",
         "mean_leave_point", "leave_point_spread",
+        "has_listen_history",
         "bias"
     )
 
@@ -84,9 +88,10 @@ object FeatureSchema {
     const val VOLUME_DOWNS = 33
     const val MEAN_LEAVE_POINT = 34
     const val LEAVE_POINT_SPREAD = 35
-    const val BIAS = 36
+    const val HAS_LISTEN_HISTORY = 36
+    const val BIAS = 37
 
-    const val DIMENSION: Int = 37
+    const val DIMENSION: Int = 38
 
     // Indices whose values vary on a continuous unbounded scale and benefit from running
     // standardisation. Bounded or one-hot features pass through untouched.
@@ -100,13 +105,15 @@ object FeatureSchema {
         PAUSE_RESUMES,
         PAUSE_SKIPS,
         VOLUME_UPS,
-        VOLUME_DOWNS
+        VOLUME_DOWNS,
+        MEAN_LEAVE_POINT,
+        LEAVE_POINT_SPREAD
     )
 
     // Stable SHA-256 over the feature name list. Any reorder, rename or addition
     // changes this hash and triggers a model rebuild from raw inputs on launch.
     // The model's form is part of it: a stored model of another form is rebuilt too.
-    const val MODEL_FORM: String = "hybrid-1"
+    const val MODEL_FORM: String = "hybrid-2"
 
     val schemaHash: String by lazy {
         val payload = (names.joinToString("|") + "|model:" + MODEL_FORM).toByteArray()
@@ -153,6 +160,7 @@ object FeatureSchema {
         "volume_downs_per_listen" to "Volume-down steps per listen (log scale)",
         "mean_leave_point" to "Average point in this track at which you leave it",
         "leave_point_spread" to "How much that leave point varies between listens",
+        "has_listen_history" to "Track has enough recorded listens for the listen features",
         "bias" to "Constant baseline (model's average reward)"
     )
 }

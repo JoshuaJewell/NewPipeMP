@@ -94,6 +94,11 @@ object FeatureExtractor {
         return v
     }
 
+    // The per-track features of the hybrid model (HybridLinUCB): 1 for the track's own
+    // offset, and the scaled days since it last played for its own recovery slope.
+    @JvmStatic
+    fun trackFeatures(scaled: DoubleArray): DoubleArray = doubleArrayOf(1.0, scaled[FeatureSchema.DAYS_SINCE_PLAYED])
+
     // The uploader rate is completions / (completions + skips) summed over the uploader's
     // tracks, so the track side uses the same denominator for a like-for-like difference.
     internal fun completionVsUploader(item: CandidateItem): Double {
@@ -112,13 +117,17 @@ object FeatureExtractor {
     }
 
     // Until a track has enough recorded listens, every listen-event feature is neutral:
-    // zero rates and spread, and the cold-start prior for the mean leave point.
+    // zero rates and spread, a mean leave point near the usual one, and has_listen_history
+    // 0. The flag carries "no history" on its own, so the leave point means only where the
+    // listener leaves (it used to stand at 0.5 for unplayed tracks, which made it mostly a
+    // has-history indicator, tied up with the bias).
     private fun putListenEvents(v: DoubleArray, e: ListenEventCounts) {
         val listens = e.leaveCount
         if (listens < AdaptiveShuffleConfig.COLD_START_MIN_PLAYS) {
-            v[FeatureSchema.MEAN_LEAVE_POINT] = AdaptiveShuffleConfig.COLD_START_COMPLETION_RATIO
+            v[FeatureSchema.MEAN_LEAVE_POINT] = AdaptiveShuffleConfig.COLD_START_LEAVE_POINT
             return
         }
+        v[FeatureSchema.HAS_LISTEN_HISTORY] = 1.0
         fun perListen(count: Int) = ln(1.0 + count.coerceAtLeast(0).toDouble() / listens)
         v[FeatureSchema.FORWARD_SEEKS] = perListen(e.forwardSeeks)
         v[FeatureSchema.BACKWARD_SEEKS] = perListen(e.backwardSeeks)

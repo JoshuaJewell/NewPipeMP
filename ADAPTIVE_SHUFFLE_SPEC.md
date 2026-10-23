@@ -235,6 +235,10 @@ The artist was 25 of about 2,100 playlist tracks (1.2%) and 15% of all picks.
 
 Fix: `StreamUrls.canonical` gives one URL per track (the YouTube watch URL; repeated path slashes collapsed). Candidate rows are looked up and created under it, recency keys use it, and the library download deduplicates by it. Uploader spacing identifies an uploader by channel URL, falling back to the name. A decision whose track the player reports under another row is still resolved through the queue item's row. The 293 unresolved decisions have no outcome to recover and are left out of rebuilds, as before.
 
+### D11. The mean leave point stood in for "has history"
+
+Unplayed tracks had a mean leave point of 0.5 and played ones mostly 0.8 to 0.9, unscaled, so the feature mostly said "has listen history" and traded off against the bias: on the device the two weights grew large and opposite (-0.60 and +0.57). Schema v6 adds has_listen_history, gives unplayed tracks a usual leave point (0.8), and scales mean_leave_point and leave_point_spread like the other continuous features, so the ridge prior treats their weights like the others' and the debug view's ranking means something.
+
 ### D10. Early scaling could pin a weight for thousands of updates
 
 Found while testing 6.7. The feature scaler floors the standard deviation at 0.001, so after a few identical values (early in a rebuild, or a fresh install) the next different value came out hundreds of standard deviations away. One update with such a vector makes the model's precision in that direction enormous, and with the discount at 0.999 it takes thousands of events to fade. Fix: scaled features are clipped to 5 standard deviations.
@@ -331,6 +335,10 @@ The stored model's form is part of the schema hash, so the first launch rebuilds
 
 Replay (7.2): completion rank correlation 0.167 to 0.205 on the synthetic log, 0.312 to 0.328 on the 518 decisions of the v1.1 export with a recoverable outcome.
 
+**Per-track recovery (model form hybrid-2).** Playing a track changes it: hearing it tires it for a while. The shared days_since_played weight gives every track the same recovery curve, but some bear hearing daily and others wear out. Each track's own part is now two coefficients, an offset and a recovery slope on the scaled days since it last played, with priors of precision 8 and 16; the slope's is tighter because it needs listens at varied gaps to show, and until then a track recovers like the library. Over the v1.1 export the replay is unchanged within noise (0.326 against 0.328), as that history has few repeat listens at varied gaps; on the synthetic log, 0.216 against 0.205.
+
+**Memory.** The discount is 0.9997 per resolved decision, a memory of about 3,300: an event 1,000 listens back counts 74%, 3,000 back 41%. It was 0.999 (1,000), which forgot a track heard twice a month before its offset could build. It counts listens, not time, so time away forgets nothing; random picks now guard against the policy's own bias, which was the main reason for forgetting fast.
+
 ### 6.7 Evidence weights
 
 - **Model and random picks** count fully.
@@ -391,7 +399,9 @@ Replay (7.2) is biased towards the policy that made the history, so it cannot sa
 
 The internals screen exports a zip (`AdaptiveShuffleExport`): `model.json` (each feature's weight and scaling, the configuration, the comparison with random picks), `events.tsv` (every decision with its chooser, prediction, outcome, candidates and raw features), `offsets.tsv` (each track's learnt offset) and `tracks.tsv`. Random picks in it are uniform over their recorded candidates, so they can evaluate any other policy offline by the replay method (Li et al., 2011): keep the random picks where that policy would have chosen the same track from the same candidates, and average their outcomes.
 
-The detail screen shows, under the user's rating and only once the track has one, the model's predicted reward for it, the part that is the track's own offset, and a 1 to 10 rank among up to 200 tracks of the current queue scored in the same context.
+The internals screen ranks weights by typical effect: weight times the spread of the feature's scaled value over the last 500 decisions, with the bias first as the baseline. Raw weights do not compare across features.
+
+The detail screen shows, under the user's rating and only once the track has one, the model's predicted reward for it, the part that is the track's own offset, and a 1 to 10 rank among up to 200 tracks of the current queue scored in the same context. Tapping it shows the score taken apart: the baseline, the largest feature parts (weight times scaled value, so 0 is an average track), the rest together, the track's own offset and own recovery, and the uncertainty.
 
 ---
 

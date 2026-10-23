@@ -70,7 +70,7 @@ object Bootstrap {
             freshScaler.observe(rawV)
             val scaledV = freshScaler.transform(rawV)
             // A prior over the shared weights only: no track gets an offset from a guess.
-            freshLinucb.update(scaledV, reward, null, AdaptiveShuffleConfig.BOOTSTRAP_WEIGHT)
+            freshLinucb.update(scaledV, reward, null, weight = AdaptiveShuffleConfig.BOOTSTRAP_WEIGHT)
             ingested += 1L
         }
 

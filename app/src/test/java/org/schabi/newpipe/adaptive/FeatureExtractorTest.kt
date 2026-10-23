@@ -244,8 +244,12 @@ class FeatureExtractorTest {
         val few = ListenEventCounts(forwardSeeks = 5, volumeUps = 4, leaveCount = 2, leaveMean = 0.1, leaveM2 = 0.3)
         val v = FeatureExtractor.buildRawVector(ctx(), item().copy(listenEvents = few))
         for (i in FeatureSchema.FORWARD_SEEKS..FeatureSchema.VOLUME_DOWNS) assertEquals(0.0, v[i], 0.0)
-        assertEquals(AdaptiveShuffleConfig.COLD_START_COMPLETION_RATIO, v[FeatureSchema.MEAN_LEAVE_POINT], 0.0)
+        assertEquals(AdaptiveShuffleConfig.COLD_START_LEAVE_POINT, v[FeatureSchema.MEAN_LEAVE_POINT], 0.0)
         assertEquals(0.0, v[FeatureSchema.LEAVE_POINT_SPREAD], 0.0)
+        assertEquals(0.0, v[FeatureSchema.HAS_LISTEN_HISTORY], 0.0)
+        val enough = few.copy(leaveCount = 3)
+        val w = FeatureExtractor.buildRawVector(ctx(), item().copy(listenEvents = enough))
+        assertEquals(1.0, w[FeatureSchema.HAS_LISTEN_HISTORY], 0.0)
     }
 
     @Test fun `listen events are per listen on a log scale`() {

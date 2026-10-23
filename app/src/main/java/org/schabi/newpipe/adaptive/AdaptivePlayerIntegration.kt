@@ -197,7 +197,13 @@ class AdaptivePlayerIntegration(
     // (HybridLinUCB). rating: 1 to 10 by where the prediction falls among a sample of the
     // queue scored in the same context, so 8 means "in the model's top 20% of this queue
     // right now"; null when the queue is too small to compare against.
-    data class Standing(val predicted: Double, val ownOffset: Double, val rating: Int?, val comparedWith: Int)
+    data class Standing(
+        val predicted: Double,
+        val ownOffset: Double,
+        val rating: Int?,
+        val comparedWith: Int,
+        val breakdown: AdaptiveShuffleEngine.Breakdown
+    )
 
     fun standingOf(item: PlayQueueItem, queue: PlayQueue?): Standing? {
         val key = CandidateFilter.key(item.serviceId, item.url)
@@ -206,7 +212,8 @@ class AdaptivePlayerIntegration(
         val pairs = materialiser.materialisePairs(listOf(item) + sample, previousStreamId)
         val mine = pairs.indexOfFirst { it.first === item }
         if (mine < 0) return null
-        val scores = engine.predict(pairs.map { it.second }, buildContext(queue?.let { originOf(it) } ?: QueueOrigin.OTHER))
+        val context = buildContext(queue?.let { originOf(it) } ?: QueueOrigin.OTHER)
+        val scores = engine.predict(pairs.map { it.second }, context)
         val own = scores[mine]
         val rest = scores.filterIndexed { i, _ -> i != mine }
         val rating = if (rest.size >= STANDING_MIN_COMPARED) {
@@ -215,7 +222,7 @@ class AdaptivePlayerIntegration(
         } else {
             null
         }
-        return Standing(own.predictedReward, own.offset, rating, rest.size)
+        return Standing(own.predictedReward, own.offset, rating, rest.size, engine.explain(pairs[mine].second, context))
     }
 
     // Writes AdaptiveShuffleExport's zip.

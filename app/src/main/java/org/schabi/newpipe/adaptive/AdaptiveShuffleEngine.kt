@@ -95,7 +95,9 @@ class AdaptiveShuffleEngine(
             val scaledVectors = Array(candidates.size) { i ->
                 scaler.transform(FeatureExtractor.buildRawVector(context, candidates[i]))
             }
-            val scores = Array(candidates.size) { i -> model.score(scaledVectors[i], candidates[i].streamId) }
+            val scores = Array(candidates.size) { i ->
+                model.score(scaledVectors[i], candidates[i].streamId, FeatureExtractor.trackFeatures(scaledVectors[i]))
+            }
             val greedyIdx = scores.indices.maxByOrNull { scores[it].predictedReward } ?: 0
             // A baseline pick is still scored, so its prediction can be compared with its
             // outcome, and still trains the model: a uniform pick is unbiased evidence.
@@ -107,7 +109,9 @@ class AdaptiveShuffleEngine(
 
                     SelectionMode.THOMPSON -> {
                         val draw = model.sample(rng)
-                        scaledVectors.indices.maxByOrNull { draw.value(scaledVectors[it], candidates[it].streamId) } ?: 0
+                        scaledVectors.indices.maxByOrNull {
+                            draw.value(scaledVectors[it], candidates[it].streamId, FeatureExtractor.trackFeatures(scaledVectors[it]))
+                        } ?: 0
                     }
                 }
             }
@@ -131,7 +135,55 @@ class AdaptiveShuffleEngine(
 
     // How the model scores each candidate now, without deciding anything or recording it.
     fun predict(candidates: List<CandidateItem>, context: DecisionContext): List<HybridLinUCB.Score> = synchronized(lock) {
-        candidates.map { c -> model.score(scaler.transform(FeatureExtractor.buildRawVector(context, c)), c.streamId) }
+        candidates.map { c ->
+            val x = scaler.transform(FeatureExtractor.buildRawVector(context, c))
+            model.score(x, c.streamId, FeatureExtractor.trackFeatures(x))
+        }
+    }
+
+    // A track's score taken apart (spec section 7.6): each shared feature's part, weight
+    // times the track's scaled value (for a scaled feature, 0 is the average track, so the
+    // part is how far this track's value moves it), then the track's own offset and own
+    // recovery. They add up to predicted.
+    data class Breakdown(
+        val features: List<Pair<String, Double>>,
+        val ownOffset: Double,
+        val ownRecovery: Double,
+        val daysSincePlayed: Double?,
+        val predicted: Double,
+        val uncertainty: Double
+    )
+
+    fun explain(candidate: CandidateItem, context: DecisionContext): Breakdown = synchronized(lock) {
+        val x = scaler.transform(FeatureExtractor.buildRawVector(context, candidate))
+        val u = FeatureExtractor.trackFeatures(x)
+        val theta = model.theta()
+        val phi = model.coefficients(candidate.streamId)
+        val score = model.score(x, candidate.streamId, u)
+        Breakdown(
+            features = FeatureSchema.names.indices.map { FeatureSchema.names[it] to theta[it] * x[it] },
+            ownOffset = phi[0] * u[0],
+            ownRecovery = phi[1] * u[1],
+            daysSincePlayed = candidate.daysSinceLastAccess,
+            predicted = score.predictedReward,
+            uncertainty = score.uncertainty
+        )
+    }
+
+    // How much each feature's scaled value typically varies, over recent decisions as the
+    // scaler now sees them. A weight times this is the effect of a typical difference in
+    // that feature, which compares across features where raw weights do not.
+    fun featureSpread(rowsToRead: Int = 500): DoubleArray {
+        val rows = store.getRecentResolved(rowsToRead)
+        val vectors = synchronized(lock) {
+            rows.mapNotNull { e -> rawVectorFor(e.rawInputsBlob)?.let { scaler.transform(it) } }
+        }
+        val d = FeatureSchema.DIMENSION
+        if (vectors.size < 2) return DoubleArray(d)
+        return DoubleArray(d) { i ->
+            val mean = vectors.sumOf { it[i] } / vectors.size
+            kotlin.math.sqrt(vectors.sumOf { (it[i] - mean) * (it[i] - mean) } / (vectors.size - 1))
+        }
     }
 
     data class Snapshot(
@@ -153,7 +205,7 @@ class AdaptiveShuffleEngine(
     // too once the listen shows the choice was meant (spec section 6.7).
     fun recordUserPick(chosen: CandidateItem, context: DecisionContext, displaced: CandidateItem?): DecisionResult = synchronized(lock) {
         val scaled = scaler.transform(FeatureExtractor.buildRawVector(context, chosen))
-        val score = model.score(scaled, chosen.streamId)
+        val score = model.score(scaled, chosen.streamId, FeatureExtractor.trackFeatures(scaled))
         val event = AdaptiveShufflePendingEventEntity(
             streamId = chosen.streamId,
             chosenAt = clock(),
@@ -260,7 +312,13 @@ class AdaptiveShuffleEngine(
                     event.chosenAt - AdaptiveShuffleConfig.REPEAT_WINDOW_MILLIS,
                     event.chosenAt
                 )
-                model.update(scaledVector, reward, streamId, evidenceWeight(decoded?.chooser ?: Chooser.MODEL, repeats))
+                model.update(
+                    scaledVector,
+                    reward,
+                    streamId,
+                    FeatureExtractor.trackFeatures(scaledVector),
+                    evidenceWeight(decoded?.chooser ?: Chooser.MODEL, repeats)
+                )
                 decoded?.let { scaler.observe(FeatureExtractor.buildRawVector(it.context, it.item)) }
                 decoded?.let { applyPreference(model, scaler, it, outcome) }
                 nEvents += 1L
@@ -292,7 +350,7 @@ class AdaptiveShuffleEngine(
         val clip = AdaptiveShuffleConfig.PAIRWISE_CLIP
         val diff = DoubleArray(a.size) { (a[it] - b[it]).coerceIn(-clip, clip) }
         if (diff.all { abs(it) < 1e-12 }) return
-        model.update(diff, AdaptiveShuffleConfig.PAIRWISE_MARGIN, null, AdaptiveShuffleConfig.PAIRWISE_WEIGHT)
+        model.update(diff, AdaptiveShuffleConfig.PAIRWISE_MARGIN, null, weight = AdaptiveShuffleConfig.PAIRWISE_WEIGHT)
     }
 
     private fun rawVectorFor(rawInputsBlob: ByteArray): DoubleArray? = try {
@@ -347,7 +405,8 @@ class AdaptiveShuffleEngine(
                 e.chosenAt
             )
             freshScaler.observe(rawV)
-            freshModel.update(freshScaler.transform(rawV), reward, e.streamId, evidenceWeight(decoded.chooser, repeats))
+            val x = freshScaler.transform(rawV)
+            freshModel.update(x, reward, e.streamId, FeatureExtractor.trackFeatures(x), evidenceWeight(decoded.chooser, repeats))
             if (outcome != null) applyPreference(freshModel, freshScaler, decoded, outcome)
             ingested += 1
         }

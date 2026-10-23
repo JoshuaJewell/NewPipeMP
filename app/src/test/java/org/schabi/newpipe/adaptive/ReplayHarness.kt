@@ -85,9 +85,12 @@ internal object ReplayHarness {
         private val linear = if (hybrid) null else LinUCB(dimension, discount = discount)
         private val withOffsets = if (hybrid) HybridLinUCB(dimension, discount = discount) else null
 
-        fun predicted(x: DoubleArray, track: Long): Double = linear?.score(x)?.predictedReward ?: withOffsets!!.score(x, track).predictedReward
+        // Per-track features only exist in the current schema (the v2 one has no recovery).
+        private fun u(x: DoubleArray) = if (x.size == FeatureSchema.DIMENSION) FeatureExtractor.trackFeatures(x) else null
 
-        fun total(x: DoubleArray, track: Long): Double = linear?.score(x)?.total ?: withOffsets!!.score(x, track).total
+        fun predicted(x: DoubleArray, track: Long): Double = linear?.score(x)?.predictedReward ?: withOffsets!!.score(x, track, u(x)).predictedReward
+
+        fun total(x: DoubleArray, track: Long): Double = linear?.score(x)?.total ?: withOffsets!!.score(x, track, u(x)).total
 
         fun draw(rng: Random): (DoubleArray, Long) -> Double {
             linear?.let { m ->
@@ -95,11 +98,11 @@ internal object ReplayHarness {
                 return { x, _ -> LinUCB.dot(theta, x) }
             }
             val d = withOffsets!!.sample(rng)
-            return { x, track -> d.value(x, track) }
+            return { x, track -> d.value(x, track, u(x)) }
         }
 
         fun update(x: DoubleArray, reward: Double, track: Long) {
-            linear?.update(x, reward) ?: withOffsets!!.update(x, reward, track)
+            linear?.update(x, reward) ?: withOffsets!!.update(x, reward, track, u(x))
         }
     }
 

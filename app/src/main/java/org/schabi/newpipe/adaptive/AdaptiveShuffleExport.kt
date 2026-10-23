@@ -43,10 +43,11 @@ object AdaptiveShuffleExport {
             entry("model.json") { writeModel(it, snapshot, engine, nowMillis) }
             entry("events.tsv") { writeEvents(it, events, decoded, candidates) }
             entry("offsets.tsv") { w ->
-                w.append("stream_id\toffset\tweighted_listens\ttitle\tuploader\n")
+                w.append("stream_id\toffset\trecovery_slope\tweighted_listens\ttitle\tuploader\n")
                 for (o in snapshot.offsets.sortedByDescending { it.offset }) {
                     val t = tracks[o.trackId]
-                    w.append("${o.trackId}\t${o.offset}\t${o.weightedListens}\t${clean(t?.title)}\t${clean(t?.uploader)}\n")
+                    val slope = o.coefficients.getOrNull(1) ?: 0.0
+                    w.append("${o.trackId}\t${o.offset}\t$slope\t${o.weightedListens}\t${clean(t?.title)}\t${clean(t?.uploader)}\n")
                 }
             }
             entry("tracks.tsv") { w ->
@@ -70,6 +71,7 @@ object AdaptiveShuffleExport {
         val config = listOf(
             "ridge_lambda" to AdaptiveShuffleConfig.RIDGE_LAMBDA,
             "track_offset_lambda" to AdaptiveShuffleConfig.TRACK_OFFSET_LAMBDA,
+            "track_recovery_lambda" to AdaptiveShuffleConfig.TRACK_RECOVERY_LAMBDA,
             "exploration_alpha" to AdaptiveShuffleConfig.EXPLORATION_ALPHA,
             "discount_gamma" to AdaptiveShuffleConfig.DISCOUNT_GAMMA,
             "reward_slope" to AdaptiveShuffleConfig.REWARD_SLOPE,
@@ -160,7 +162,9 @@ object AdaptiveShuffleExport {
                      other policy offline).
                      x_*: the raw (unscaled) features of the chosen track at decision time.
         offsets.tsv  each track's own learnt offset above or below what its features predict,
-                     with the weighted number of listens behind it.
+                     its own recovery slope (reward per standard deviation of scaled days since
+                     it last played, beyond the shared days_since_played weight; positive: it
+                     wants a longer rest than most), and the weighted listens behind them.
         tracks.tsv   every track named in the other files.
 
         Times are milliseconds since 1970 (UTC). Empty cells are unknown values.
