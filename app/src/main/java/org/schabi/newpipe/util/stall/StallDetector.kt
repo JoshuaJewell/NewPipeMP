@@ -36,6 +36,9 @@ class StallDetector(
 
     val outstanding: Set<String> get() = waiting.keys
 
+    // Each outstanding probe and how long it has waited so far.
+    fun waitingNow(): Map<String, Long> = LinkedHashMap(waiting)
+
     fun started(name: String) {
         if (name !in waiting) waiting[name] = 0L
     }

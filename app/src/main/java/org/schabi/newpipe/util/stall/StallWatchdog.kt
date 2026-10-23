@@ -41,7 +41,7 @@ object StallWatchdog {
     private const val STALL_AFTER_MILLIS = 15_000L
     private const val REDUMP_AFTER_MILLIS = 60_000L
     private const val MAX_REPORTS = 10
-    private const val MAX_EVENTS = 30
+    private const val MAX_EVENTS = 100
     private const val NOTIFICATION_ID = 0x5741
 
     const val DIRECTORY = "stall-reports"
@@ -74,7 +74,7 @@ object StallWatchdog {
 
     // Newest first.
     fun reports(context: Context): List<File> = reportDirectory(context).listFiles { f -> f.name.endsWith(".txt") }
-        ?.sortedByDescending { it.name }
+        ?.sortedByDescending { it.lastModified() }
         ?: emptyList()
 
     private fun loop(context: Context) {
@@ -174,6 +174,25 @@ object StallWatchdog {
         }
     }
 
+    // A line for the recent-events log in every report: what the player did around a
+    // failure, for example. Cheap; safe from any thread.
+    @JvmStatic
+    fun record(message: String) = note(message)
+
+    // Saves a report now, whatever the probes say: for when something is wrong that the
+    // probes do not catch. Returns the file, or null if it could not be written.
+    fun dumpNow(context: Context): File? = try {
+        val dir = reportDirectory(context).apply { mkdirs() }
+        val file = File(dir, "manual-" + SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date()) + ".txt")
+        val waiting = synchronized(detector) { detector.waitingNow() }
+        file.writeText(buildReport("NewPipe thread dump (saved by hand)", waiting, header = true))
+        reports(context).drop(MAX_REPORTS).forEach { it.delete() }
+        file
+    } catch (t: Throwable) {
+        Log.w(TAG, "could not write thread dump", t)
+        null
+    }
+
     @Synchronized
     private fun note(message: String) {
         events.addLast("${timestamp()}  $message")
@@ -189,23 +208,30 @@ object StallWatchdog {
                 File(dir, "stall-" + SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date()) + ".txt")
             }
             currentReport = file
-            file.appendText(buildReport(event))
+            file.appendText(
+                buildReport(
+                    if (event.repeat) "Still stuck" else "NewPipe stall report",
+                    event.probes,
+                    header = !event.repeat
+                )
+            )
             reports(context).drop(MAX_REPORTS).forEach { it.delete() }
         } catch (t: Throwable) {
             Log.w(TAG, "could not write stall report", t)
         }
     }
 
-    private fun buildReport(event: StallDetector.Event.Stalled): String = buildString {
-        append(if (event.repeat) "\n\n===== Still stuck " else "===== NewPipe stall report ")
+    private fun buildReport(title: String, probes: Map<String, Long>, header: Boolean): String = buildString {
+        append(if (header) "===== " else "\n\n===== ").append(title).append(' ')
         append(timestamp()).append(" =====\n")
-        if (!event.repeat) {
+        if (header) {
             append("version ").append(BuildConfig.VERSION_NAME).append(" (").append(BuildConfig.VERSION_CODE).append(")\n")
             append("uptime ").append(SystemClock.uptimeMillis() / 1000).append(" s awake, ")
             append(SystemClock.elapsedRealtime() / 1000).append(" s since boot\n")
         }
         append("\nNot answering:\n")
-        for ((name, waited) in event.probes) append("  ").append(name).append(": ").append(waited / 1000).append(" s\n")
+        if (probes.isEmpty()) append("  (nothing: every probe has answered)\n")
+        for ((name, waited) in probes) append("  ").append(name).append(": ").append(waited / 1000).append(" s\n")
         append("\nRecent events:\n")
         synchronized(this@StallWatchdog) { events.forEach { append("  ").append(it).append('\n') } }
         append("\nThreads:\n")

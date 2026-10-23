@@ -87,6 +87,7 @@ import org.schabi.newpipe.R;
 import org.schabi.newpipe.adaptive.AdaptivePlayerIntegration;
 import org.schabi.newpipe.adaptive.AdaptiveShuffleHolder;
 import org.schabi.newpipe.adaptive.RawInputsCodec;
+import org.schabi.newpipe.util.stall.StallWatchdog;
 import org.schabi.newpipe.adaptive.ShuffleSession;
 import org.schabi.newpipe.databinding.PlayerBinding;
 import org.schabi.newpipe.error.ErrorInfo;
@@ -695,6 +696,7 @@ public final class Player implements PlaybackListener, Listener {
                               final boolean playOnReady) {
         // A new queue: nothing from the old one can be returned to
         releaseHeldListen(false);
+        StallWatchdog.record("player: new queue");
         destroyPlayer();
         initPlayer(playOnReady);
         final boolean playbackSkipSilence = getPrefs().getBoolean(getContext().getString(
@@ -797,6 +799,7 @@ public final class Player implements PlaybackListener, Listener {
         setRecovery();
         stopActivityBinding();
 
+        breadcrumb("player closing");
         releaseHeldListen(true);
         if (isAdaptiveShuffleEnabled()) {
             runAdaptive(AdaptivePlayerIntegration::onPlaybackStopped);
@@ -851,6 +854,7 @@ public final class Player implements PlaybackListener, Listener {
         if (DEBUG) {
             Log.d(TAG, "onPlaybackShutdown() called");
         }
+        breadcrumb("shutting down after an error");
         // destroys the service, which in turn will destroy the player
         service.destroyPlayerAndStopService();
     }
@@ -1270,6 +1274,7 @@ public final class Player implements PlaybackListener, Listener {
         if (DEBUG) {
             Log.d(TAG, "Playback - onPlaybackBlock() called");
         }
+        breadcrumb("blocked: waiting for the item to load");
 
         currentItem = null;
         currentMetadata = null;
@@ -1284,6 +1289,7 @@ public final class Player implements PlaybackListener, Listener {
         if (DEBUG) {
             Log.d(TAG, "Playback - onPlaybackUnblock() called");
         }
+        breadcrumb("unblocked: item loaded");
 
         if (exoPlayerIsNull()) {
             return;
@@ -1346,6 +1352,7 @@ public final class Player implements PlaybackListener, Listener {
         if (DEBUG) {
             Log.d(TAG, "onPlaying() called");
         }
+        breadcrumb("playing");
         if (!isProgressLoopRunning()) {
             startProgressLoop();
         }
@@ -1383,6 +1390,7 @@ public final class Player implements PlaybackListener, Listener {
         if (DEBUG) {
             Log.d(TAG, "onPaused() called");
         }
+        breadcrumb(nextPauseBySystem ? "paused by the system" : "paused");
 
         if (isProgressLoopRunning()) {
             stopProgressLoop();
@@ -1439,6 +1447,20 @@ public final class Player implements PlaybackListener, Listener {
     private boolean isAdaptiveShuffleActive() {
         return isAdaptiveShuffleEnabled() && !exoPlayerIsNull()
                 && simpleExoPlayer.getShuffleModeEnabled();
+    }
+
+    /**
+     * Notes what the player did for the stall reports' event log (see {@link StallWatchdog}).
+     *
+     * @param what what happened
+     */
+    private void breadcrumb(@NonNull final String what) {
+        final PlayQueueItem item = playQueue == null ? null : playQueue.getItem();
+        final long position = exoPlayerIsNull() ? -1 : simpleExoPlayer.getCurrentPosition();
+        StallWatchdog.record("player: " + what + " (item "
+                + (playQueue == null ? "-" : playQueue.getIndex()) + " at "
+                + (position / 1000) + " s, played=" + currentListenHasPlayed + ", "
+                + (item == null ? "no item" : item.getUrl()) + ")");
     }
 
     private void noteUserChoice(@NonNull final PlayQueueItem item) {
@@ -1797,7 +1819,9 @@ public final class Player implements PlaybackListener, Listener {
         final PlayQueueItem failing = playQueue == null ? null : playQueue.getItem();
         final String key = failing == null ? null
                 : failing.getServiceId() + "|" + failing.getUrl();
-        switch (failurePolicy.onFailure(key)) {
+        final PlaybackFailurePolicy.Action action = failurePolicy.onFailure(key);
+        breadcrumb("transient failure: " + action);
+        switch (action) {
             case SKIP:
                 if (playQueue != null) {
                     // A failure, not the user moving on: leaving it is no verdict on it.
@@ -1828,8 +1852,10 @@ public final class Player implements PlaybackListener, Listener {
         if (item == null || exoPlayerIsNull() || !streamRefreshPolicy.shouldRefresh(
                 item.getServiceId() + "|" + item.getUrl(),
                 simpleExoPlayer.getCurrentPosition())) {
+            breadcrumb("stream refresh refused (limit reached, or no progress since last)");
             return false;
         }
+        breadcrumb("refreshing stream in place");
         InfoCache.getInstance().removeInfo(item.getServiceId(), item.getUrl(),
                 InfoCache.Type.STREAM);
         reloadInPlace(item);
@@ -1851,8 +1877,10 @@ public final class Player implements PlaybackListener, Listener {
             return;
         }
         if (currentListenHasPlayed) {
+            breadcrumb("skipping failed item, no verdict");
             currentUnjudgedReason = ListenJudge.Unjudged.FAILED;
         } else {
+            breadcrumb("skipping item as unplayable");
             markAdaptiveUnplayable(playQueue.getItem());
         }
         playQueue.error();
@@ -2248,6 +2276,8 @@ public final class Player implements PlaybackListener, Listener {
     @Override
     public void onPlayerError(@NonNull final PlaybackException error) {
         Log.e(TAG, "ExoPlayer - onPlayerError() called with:", error);
+        breadcrumb("error " + error.getErrorCodeName()
+                + (error.getCause() == null ? "" : ": " + error.getCause().getMessage()));
 
         saveStreamProgressState();
         boolean isCatchableException = false;

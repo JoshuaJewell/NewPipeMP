@@ -107,6 +107,14 @@ public class DebugSettingsFragment extends BasePreferenceFragment {
 
         final Preference stallReportsPreference =
                 requirePreference(R.string.stall_reports_key);
+        requirePreference(R.string.thread_dump_now_key).setOnPreferenceClickListener(p -> {
+            final File dump = StallWatchdog.INSTANCE.dumpNow(requireContext());
+            Toast.makeText(requireContext(), dump == null
+                    ? R.string.thread_dump_failed : R.string.thread_dump_saved,
+                    Toast.LENGTH_LONG).show();
+            updateStallReportsSummary(stallReportsPreference);
+            return true;
+        });
         updateStallReportsSummary(stallReportsPreference);
         stallReportsPreference.setOnPreferenceClickListener(preference -> {
             final List<File> reports = StallWatchdog.INSTANCE.reports(requireContext());
