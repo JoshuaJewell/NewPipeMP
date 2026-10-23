@@ -73,6 +73,12 @@
         app:iconSpaceReserved="false" />
 
     <Preference
+        android:key="@string/stall_reports_key"
+        android:title="@string/stall_reports_title"
+        app:singleLineTitle="false"
+        app:iconSpaceReserved="false" />
+
+    <Preference
         android:key="@string/adaptive_shuffle_debug_screen_key"
         android:title="@string/adaptive_shuffle_debug_screen_title"
         android:summary="@string/adaptive_shuffle_debug_screen_summary"

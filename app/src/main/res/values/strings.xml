@@ -579,6 +579,16 @@
     <string name="check_new_streams">Run check for new streams</string>
     <string name="crash_the_app">Crash the app</string>
     <string name="repair_stream_metadata">Repair stream metadata</string>
+    <string name="stall_reports_title">Stall reports</string>
+    <string name="stall_reports_summary_none">None saved. When part of the app stops answering for 15 seconds, the state of every thread is saved here.</string>
+    <string name="stall_reports_summary">%1$d saved, latest %2$s</string>
+    <string name="stall_reports_none">No stall reports saved</string>
+    <string name="stall_reports_dialog">%1$d stall reports. Save them as one text file to share, or delete them.</string>
+    <string name="stall_reports_save">Save to file</string>
+    <string name="stall_reports_delete">Delete</string>
+    <string name="stall_reports_saved">Stall reports saved</string>
+    <string name="stall_notification_title">NewPipe has stalled</string>
+    <string name="stall_notification_text">Not answering: %1$s. A report has been saved: Settings, Debug, Stall reports.</string>
     <string name="repair_stream_metadata_summary">Extract metadata from downloaded files and repair corrupted database entries</string>
     <string name="show_error_snackbar">Show an error snackbar</string>
     <string name="create_error_notification">Create an error notification</string>

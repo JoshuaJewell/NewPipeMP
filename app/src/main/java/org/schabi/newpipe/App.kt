@@ -41,6 +41,7 @@ import org.schabi.newpipe.util.image.ImageStrategy
 import org.schabi.newpipe.util.image.PreferredImageQuality
 import org.schabi.newpipe.util.potoken.PoTokenProviderImpl
 import org.schabi.newpipe.util.rating.RatingBackfillJob
+import org.schabi.newpipe.util.stall.StallWatchdog
 
 /*
  * Copyright (C) Hans-Christoph Steiner 2016 <hans@eds.org>
@@ -123,6 +124,9 @@ open class App :
         )
 
         configureRxJavaErrorHandler()
+
+        // Saves thread dumps if the database, a key thread or pool stops answering.
+        StallWatchdog.start(this)
 
         YoutubeStreamExtractor.setPoTokenProvider(PoTokenProviderImpl)
 
