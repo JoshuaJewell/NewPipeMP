@@ -32,6 +32,12 @@ object FeatureSchema {
     // Schema v6 adds has_listen_history, gives unplayed tracks a usual mean leave point
     // instead of 0.5, and scales mean_leave_point and leave_point_spread. The leave point
     // had been standing in for "has history", tied up with the bias (spec section 5, D11).
+    // Then every continuous feature is scaled, not only the unbounded ones: a feature that
+    // barely varies needs a large weight to matter, and the ridge prior holds large
+    // weights back, so unscaled ones were learnt more weakly than the rest. Only one-hots,
+    // flags, the cyclic time pairs and the bias pass through. An unplayed track's
+    // completion rate is the usual one (0.8), not 0.5, for the same reason as the leave
+    // point. The scaled set is part of the schema hash.
     val names: List<String> = listOf(
         "hour_sin", "hour_cos", "dow_sin", "dow_cos",
         "session_position", "recent_skip_rate",
@@ -97,9 +103,15 @@ object FeatureSchema {
     // standardisation. Bounded or one-hot features pass through untouched.
     val scaledIndices: IntArray = intArrayOf(
         SESSION_POSITION,
+        RECENT_SKIP_RATE,
         LOG_DURATION,
+        USER_RATING,
         LOG_PLAY_COUNT,
+        COMPLETION_RATE,
         DAYS_SINCE_PLAYED,
+        COMPLETION_VS_UPLOADER,
+        RATING_VS_UPLOADER,
+        PLAYLIST_CO_MEMBERSHIP,
         FORWARD_SEEKS,
         BACKWARD_SEEKS,
         PAUSE_RESUMES,
@@ -116,7 +128,7 @@ object FeatureSchema {
     const val MODEL_FORM: String = "hybrid-2"
 
     val schemaHash: String by lazy {
-        val payload = (names.joinToString("|") + "|model:" + MODEL_FORM).toByteArray()
+        val payload = (names.joinToString("|") + "|model:" + MODEL_FORM + "|scaled:" + scaledIndices.joinToString(",")).toByteArray()
         val digest = MessageDigest.getInstance("SHA-256").digest(payload)
         digest.joinToString("") { "%02x".format(it) }
     }

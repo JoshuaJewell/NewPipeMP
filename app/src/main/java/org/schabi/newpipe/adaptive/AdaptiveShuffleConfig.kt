@@ -67,7 +67,10 @@ object AdaptiveShuffleConfig {
     // Defaults for cold-start items (lifetime plays < this many).
     const val COLD_START_MIN_PLAYS: Int = 3
     const val COLD_START_SKIP_RATIO: Double = 0.2
-    const val COLD_START_COMPLETION_RATIO: Double = 0.5
+
+    // Completion rate given to a track with too few finished listens: near the usual one,
+    // so it reads as "an ordinary track", not as a has-history indicator (spec D11).
+    const val COLD_START_COMPLETION_RATIO: Double = 0.8
 
     // Mean leave point given to a track without enough recorded listens. Near the played
     // tracks' usual value, so that has_listen_history, not this value, says "no history".

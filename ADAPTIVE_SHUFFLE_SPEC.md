@@ -239,6 +239,8 @@ Fix: `StreamUrls.canonical` gives one URL per track (the YouTube watch URL; repe
 
 Unplayed tracks had a mean leave point of 0.5 and played ones mostly 0.8 to 0.9, unscaled, so the feature mostly said "has listen history" and traded off against the bias: on the device the two weights grew large and opposite (-0.60 and +0.57). Schema v6 adds has_listen_history, gives unplayed tracks a usual leave point (0.8), and scales mean_leave_point and leave_point_spread like the other continuous features, so the ridge prior treats their weights like the others' and the debug view's ranking means something.
 
+The same reasoning applies to every continuous feature, so all are now scaled (recent_skip_rate, user_rating_norm, completion_rate, completion_vs_uploader, rating_vs_uploader and playlist_co_membership_prev joined the set); only one-hots, flags, the cyclic time pairs and the bias pass through. An unplayed track's completion rate is 0.8 rather than 0.5, as with the leave point. The scaled set is now part of the schema hash, so changing it rebuilds the model. Replay over the v1.1 export: 0.334 for the hybrid model, against 0.326 with only the leave-point features scaled.
+
 ### D10. Early scaling could pin a weight for thousands of updates
 
 Found while testing 6.7. The feature scaler floors the standard deviation at 0.001, so after a few identical values (early in a rebuild, or a fresh install) the next different value came out hundreds of standard deviations away. One update with such a vector makes the model's precision in that direction enormous, and with the discount at 0.999 it takes thousands of events to fade. Fix: scaled features are clipped to 5 standard deviations.

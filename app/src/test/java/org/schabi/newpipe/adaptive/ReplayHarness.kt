@@ -27,6 +27,9 @@ import kotlin.math.sqrt
 //     simulated pick has none.
 internal object ReplayHarness {
 
+    // The v2 schema's cold-start completion rate, as that build had it.
+    private const val LEGACY_COLD_COMPLETION = 0.5
+
     const val CAVEAT = "Historical events were chosen by the old policy; replay is biased toward " +
         "configurations that resemble it. Replay filters gross regressions; it does not show live improvement."
 
@@ -369,7 +372,7 @@ internal object ReplayHarness {
             val plays = item.lifetimePlayCount
             if (plays < AdaptiveShuffleConfig.COLD_START_MIN_PLAYS) {
                 v[15] = AdaptiveShuffleConfig.COLD_START_SKIP_RATIO
-                v[16] = AdaptiveShuffleConfig.COLD_START_COMPLETION_RATIO
+                v[16] = LEGACY_COLD_COMPLETION
             } else {
                 v[15] = item.lifetimeEarlySkips / plays.toDouble()
                 v[16] = item.lifetimeCompletions / plays.toDouble()
@@ -383,7 +386,7 @@ internal object ReplayHarness {
             val prev = context.previousUploader
             v[20] = if (prev != null && item.uploader != null && prev == item.uploader) 1.0 else 0.0
             v[21] = item.uploaderAvgRating?.let { ((it - 3.0) / 2.0).coerceIn(-1.0, 1.0) } ?: 0.0
-            v[22] = item.uploaderCompletionRate ?: AdaptiveShuffleConfig.COLD_START_COMPLETION_RATIO
+            v[22] = item.uploaderCompletionRate ?: LEGACY_COLD_COMPLETION
             v[23] = item.uploaderSkipRate ?: AdaptiveShuffleConfig.COLD_START_SKIP_RATIO
             v[24] = ln(1.0 + item.playlistCoMembershipWithPrev.coerceAtLeast(0))
             v[25] = if (item.isDownloadedOffline) 1.0 else 0.0
