@@ -1112,6 +1112,11 @@ public final class Player implements PlaybackListener, Listener {
     private void onUpdateProgress(final int currentProgress,
                                   final int duration,
                                   final int bufferPercent) {
+        // Playing, whichever way it started (see beginListen)
+        if (!currentListenHasPlayed && currentListenItem != null && !exoPlayerIsNull()
+                && simpleExoPlayer.isPlaying()) {
+            currentListenHasPlayed = true;
+        }
         // The track now playing has played long enough that the one before can no
         // longer be returned to
         final LeftListen released = returnWindow.onProgress(
@@ -3241,8 +3246,12 @@ public final class Player implements PlaybackListener, Listener {
             currentDisruptions = new ListenDisruptions();
             currentListenReturned = false;
         }
-        // Moving on by itself, the player does not report playing again for the new item
+        // Moving on by itself, the player does not report playing again for the new item,
+        // so onPlaying never marks it as played. Without this, a track reached that way
+        // counted as never having played for its whole length: a stream refused part way
+        // (the 59 s stall) was not refreshed but skipped as unplayable.
         if (!exoPlayerIsNull() && simpleExoPlayer.isPlaying()) {
+            currentListenHasPlayed = true;
             currentTrace.start(simpleExoPlayer.getCurrentPosition());
         }
     }
