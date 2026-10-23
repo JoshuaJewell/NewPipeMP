@@ -148,6 +148,24 @@ abstract class AdaptiveShuffleFeatureQueriesDAO {
 
     data class StreamUploader(val uid: Long, val uploader: String?)
 
+    @Query(
+        """
+        SELECT uid, service_id AS serviceId, url, title, uploader, duration, user_rating AS userRating
+        FROM streams WHERE uid IN (:streamIds)
+        """
+    )
+    abstract fun tracksBlocking(streamIds: List<Long>): List<TrackRow>
+
+    data class TrackRow(
+        val uid: Long,
+        val serviceId: Int,
+        val url: String,
+        val title: String?,
+        val uploader: String?,
+        val duration: Long,
+        val userRating: Int?
+    )
+
     data class RecentlyPlayed(
         val serviceId: Int,
         val url: String,

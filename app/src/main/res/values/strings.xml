@@ -579,6 +579,11 @@
     <string name="check_new_streams">Run check for new streams</string>
     <string name="crash_the_app">Crash the app</string>
     <string name="repair_stream_metadata">Repair stream metadata</string>
+    <string name="adaptive_shuffle_export">Export</string>
+    <string name="adaptive_shuffle_exported">Adaptive shuffle data exported</string>
+    <string name="adaptive_shuffle_export_failed">Export failed: %1$s</string>
+    <string name="model_rating_in_queue">Adaptive shuffle: %1$d/10 in this queue (predicted %2$+.2f, its own %3$+.2f)</string>
+    <string name="model_rating_alone">Adaptive shuffle: predicted %1$+.2f, its own %2$+.2f</string>
     <string name="thread_dump_now_title">Save thread dump now</string>
     <string name="thread_dump_now_summary">For when playback or a screen misbehaves without a stall being detected. Saves what every thread is doing and what the player did recently, to Stall reports.</string>
     <string name="thread_dump_saved">Thread dump saved to Stall reports</string>

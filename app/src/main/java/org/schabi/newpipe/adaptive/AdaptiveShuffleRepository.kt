@@ -87,6 +87,14 @@ class AdaptiveShuffleRepository(database: AppDatabase) : AdaptiveShuffleStore {
 
     override fun getStreamTitle(streamId: Long): String? = streamDao.getTitleByIdBlocking(streamId)
 
+    override fun getAllEventsOrdered(): List<AdaptiveShufflePendingEventEntity> = pendingDao.getAllOrderedBlocking()
+
+    override fun getTracks(streamIds: Collection<Long>): List<AdaptiveShuffleStore.TrackRow> = streamIds.chunked(500).flatMap { chunk ->
+        featureQueriesDao.tracksBlocking(chunk).map {
+            AdaptiveShuffleStore.TrackRow(it.uid, it.serviceId, it.url, it.title, it.uploader, it.duration, it.userRating)
+        }
+    }
+
     // Chunked under SQLite's limit on bound parameters.
     override fun getStreamUploaders(streamIds: Collection<Long>): Map<Long, String?> = streamIds.chunked(500).flatMap { chunk ->
         featureQueriesDao.uploadersBlocking(chunk).map { it.uid to it.uploader }

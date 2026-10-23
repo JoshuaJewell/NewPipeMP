@@ -51,6 +51,14 @@ class FeatureScaler private constructor(
         return out
     }
 
+    data class Summary(val index: Int, val count: Long, val mean: Double, val std: Double)
+
+    // Running statistics of each scaled feature, with the standard deviation transform uses.
+    fun summary(): List<Summary> = scaledIndices.indices.map { k ->
+        val variance = if (counts[k] > 1L) m2s[k] / (counts[k] - 1L) else 0.0
+        Summary(scaledIndices[k], counts[k], means[k], maxOf(sqrt(variance), MIN_STD))
+    }
+
     fun toByteArray(): ByteArray {
         val n = scaledIndices.size
         val buf = ByteBuffer

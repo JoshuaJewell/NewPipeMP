@@ -14,8 +14,10 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
+import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.schedulers.Schedulers
@@ -46,6 +48,27 @@ class AdaptiveShuffleDebugFragment : Fragment() {
     private val randomChipColour = Color.parseColor("#616161")
     private val userChipColour = Color.parseColor("#2E7D32")
 
+    private var exporter: AdaptivePlayerIntegration? = null
+
+    // Writes the model, every decision and the tracks involved to a zip the user picks.
+    private val exportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val integration = exporter ?: return@registerForActivityResult
+        if (uri == null) return@registerForActivityResult
+        val context = requireContext().applicationContext
+        disposables.add(
+            Completable.fromAction {
+                context.contentResolver.openOutputStream(uri)?.use { integration.exportTo(it) }
+            }
+                .subscribeOn(AdaptiveShuffleHolder.SCHEDULER)
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe({
+                    Toast.makeText(context, R.string.adaptive_shuffle_exported, Toast.LENGTH_SHORT).show()
+                }, { t ->
+                    Toast.makeText(context, getString(R.string.adaptive_shuffle_export_failed, t.message), Toast.LENGTH_LONG).show()
+                })
+        )
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -60,6 +83,10 @@ class AdaptiveShuffleDebugFragment : Fragment() {
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe({ integration ->
                     refresh(view, integration)
+                    exporter = integration
+                    view.findViewById<Button>(R.id.exportButton).setOnClickListener {
+                        exportLauncher.launch("newpipe-adaptive-shuffle-export.zip")
+                    }
                     view.findViewById<Button>(R.id.rebuildButton).setOnClickListener {
                         disposables.add(
                             Single.fromCallable {

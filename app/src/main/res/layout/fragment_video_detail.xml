@@ -595,6 +595,17 @@
                                 android:textStyle="bold"
                                 tools:text="7" />
                         </LinearLayout>
+
+                        <org.schabi.newpipe.views.NewPipeTextView
+                            android:id="@+id/detail_model_rating"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:paddingTop="2dp"
+                            android:textAppearance="?android:attr/textAppearanceSmall"
+                            android:textColor="?android:attr/textColorSecondary"
+                            android:visibility="gone"
+                            tools:text="Adaptive shuffle: 7/10 in this queue (predicted +0.31, its own +0.08)"
+                            tools:visibility="visible" />
                     </LinearLayout>
 
                     <View

@@ -387,6 +387,12 @@ Replay (7.2) is biased towards the policy that made the history, so it cannot sa
 - The debug view's "Model against random" section (`ArmComparison`) compares the arms over every resolved decision since the first random pick: listens, mean reward, mean completion ratio, share finished (at least 0.85) and share skipped early (below 0.15), and the model's reward lift with a 95% interval (normal approximation, unequal variances). The verdict needs 30 listens per arm, and says the model is better or worse only when the interval excludes zero.
 - Random picks cost some listening quality while the comparison runs; turn the share down or off once it has an answer.
 
+### 7.6 Export and the model's own rating
+
+The internals screen exports a zip (`AdaptiveShuffleExport`): `model.json` (each feature's weight and scaling, the configuration, the comparison with random picks), `events.tsv` (every decision with its chooser, prediction, outcome, candidates and raw features), `offsets.tsv` (each track's learnt offset) and `tracks.tsv`. Random picks in it are uniform over their recorded candidates, so they can evaluate any other policy offline by the replay method (Li et al., 2011): keep the random picks where that policy would have chosen the same track from the same candidates, and average their outcomes.
+
+The detail screen shows, under the user's rating and only once the track has one, the model's predicted reward for it, the part that is the track's own offset, and a 1 to 10 rank among up to 200 tracks of the current queue scored in the same context.
+
 ---
 
 ## 8. Audio-feature pipeline

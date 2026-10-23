@@ -6,6 +6,7 @@ package org.schabi.newpipe.adaptive
 
 import java.time.LocalDateTime
 import java.util.Random
+import kotlin.math.roundToInt
 import org.schabi.newpipe.player.playqueue.ChannelTabPlayQueue
 import org.schabi.newpipe.player.playqueue.PlayQueue
 import org.schabi.newpipe.player.playqueue.PlayQueueItem
@@ -191,6 +192,35 @@ class AdaptivePlayerIntegration(
         }
     }
 
+    // How the model rates a track now, for showing beside the listener's own rating.
+    // predicted: its mean predicted reward; ownOffset: the part that is this track's own
+    // (HybridLinUCB). rating: 1 to 10 by where the prediction falls among a sample of the
+    // queue scored in the same context, so 8 means "in the model's top 20% of this queue
+    // right now"; null when the queue is too small to compare against.
+    data class Standing(val predicted: Double, val ownOffset: Double, val rating: Int?, val comparedWith: Int)
+
+    fun standingOf(item: PlayQueueItem, queue: PlayQueue?): Standing? {
+        val key = CandidateFilter.key(item.serviceId, item.url)
+        val others = queue?.streams.orEmpty().filter { CandidateFilter.key(it.serviceId, it.url) != key }
+        val sample = CandidateFilter.sample(others, STANDING_SAMPLE, rng)
+        val pairs = materialiser.materialisePairs(listOf(item) + sample, previousStreamId)
+        val mine = pairs.indexOfFirst { it.first === item }
+        if (mine < 0) return null
+        val scores = engine.predict(pairs.map { it.second }, buildContext(queue?.let { originOf(it) } ?: QueueOrigin.OTHER))
+        val own = scores[mine]
+        val rest = scores.filterIndexed { i, _ -> i != mine }
+        val rating = if (rest.size >= STANDING_MIN_COMPARED) {
+            val below = rest.count { it.predictedReward < own.predictedReward }.toDouble() / rest.size
+            1 + (below * 9.0).roundToInt()
+        } else {
+            null
+        }
+        return Standing(own.predictedReward, own.offset, rating, rest.size)
+    }
+
+    // Writes AdaptiveShuffleExport's zip.
+    fun exportTo(out: java.io.OutputStream) = AdaptiveShuffleExport.write(engine, repository, out, clock())
+
     // The listener chose a track themselves. It is recorded as their pick when it starts.
     fun onUserChose(serviceId: Int, url: String) {
         pendingUserChoice = CandidateFilter.key(serviceId, url)
@@ -344,6 +374,9 @@ class AdaptivePlayerIntegration(
     }
 
     companion object {
+        private const val STANDING_SAMPLE = 200
+        private const val STANDING_MIN_COMPARED = 10
+
         private fun uploaderKey(item: PlayQueueItem): String? = CandidateFilter.uploaderKey(item.uploaderUrl, item.uploader)
 
         // Local playlists and history lists are played as a SinglePlayQueue holding many

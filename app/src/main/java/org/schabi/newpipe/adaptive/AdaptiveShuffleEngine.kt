@@ -129,6 +129,24 @@ class AdaptiveShuffleEngine(
         }
     }
 
+    // How the model scores each candidate now, without deciding anything or recording it.
+    fun predict(candidates: List<CandidateItem>, context: DecisionContext): List<HybridLinUCB.Score> = synchronized(lock) {
+        candidates.map { c -> model.score(scaler.transform(FeatureExtractor.buildRawVector(context, c)), c.streamId) }
+    }
+
+    data class Snapshot(
+        val theta: DoubleArray,
+        val offsets: List<HybridLinUCB.TrackOffset>,
+        val scaler: List<FeatureScaler.Summary>,
+        val nEvents: Long,
+        val updates: Long
+    )
+
+    // The model's state, for export.
+    fun snapshot(): Snapshot = synchronized(lock) {
+        Snapshot(model.theta(), model.offsets(), scaler.summary(), nEvents, model.numUpdates())
+    }
+
     // The listener chose this track themselves (a tap in the queue, or "play next"). It
     // is recorded like a decision, so its listen trains the model at reduced weight, and
     // if it displaced one of the model's picks, the preference between the two is learnt

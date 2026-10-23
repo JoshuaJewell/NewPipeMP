@@ -74,6 +74,9 @@ abstract class AdaptiveShufflePendingEventDAO {
     )
     abstract fun getAllResolvedOrderedBlocking(): List<AdaptiveShufflePendingEventEntity>
 
+    @Query("SELECT * FROM adaptive_shuffle_pending_events ORDER BY chosen_at ASC")
+    abstract fun getAllOrderedBlocking(): List<AdaptiveShufflePendingEventEntity>
+
     @Query("SELECT COUNT(*) FROM adaptive_shuffle_pending_events WHERE resolved = 1")
     abstract fun countResolved(): Maybe<Int>
 

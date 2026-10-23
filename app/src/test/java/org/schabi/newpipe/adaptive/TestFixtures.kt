@@ -82,6 +82,10 @@ internal class InMemoryStore : AdaptiveShuffleStore {
     override fun countResolvedForStreamBetween(streamId: Long, fromMillis: Long, toMillis: Long) = events.values.count { it.streamId == streamId && it.resolved && it.chosenAt >= fromMillis && it.chosenAt < toMillis }
     override fun getStreamTitle(streamId: Long): String? = "track $streamId"
     val uploaders = HashMap<Long, String?>()
+    override fun getAllEventsOrdered() = events.values.sortedBy { it.chosenAt }
+    override fun getTracks(streamIds: Collection<Long>) = streamIds.map {
+        AdaptiveShuffleStore.TrackRow(it, 0, "https://www.youtube.com/watch?v=$it", "track $it", uploaders[it], 200L, null)
+    }
     override fun getStreamUploaders(streamIds: Collection<Long>): Map<Long, String?> = streamIds.filter { it in uploaders }.associateWith { uploaders[it] }
 }
 

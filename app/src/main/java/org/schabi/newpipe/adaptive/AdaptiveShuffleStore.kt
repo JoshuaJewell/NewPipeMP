@@ -35,6 +35,21 @@ interface AdaptiveShuffleStore {
 
     fun getStreamTitle(streamId: Long): String?
 
+    // Every decision, resolved or not, oldest first.
+    fun getAllEventsOrdered(): List<AdaptiveShufflePendingEventEntity>
+
+    data class TrackRow(
+        val streamId: Long,
+        val serviceId: Int,
+        val url: String,
+        val title: String?,
+        val uploader: String?,
+        val durationSeconds: Long,
+        val userRating: Int?
+    )
+
+    fun getTracks(streamIds: Collection<Long>): List<TrackRow>
+
     // Uploader names by stream id, for those found.
     fun getStreamUploaders(streamIds: Collection<Long>): Map<Long, String?>
 }

@@ -70,6 +70,8 @@ import com.google.android.material.tabs.TabLayout;
 import org.schabi.newpipe.App;
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.database.stream.model.StreamEntity;
+import org.schabi.newpipe.adaptive.AdaptivePlayerIntegration;
+import org.schabi.newpipe.adaptive.AdaptiveShuffleHolder;
 import org.schabi.newpipe.databinding.FragmentVideoDetailBinding;
 import org.schabi.newpipe.download.DownloadDialog;
 import org.schabi.newpipe.error.ErrorInfo;
@@ -135,6 +137,7 @@ import java.util.function.Consumer;
 
 import coil3.util.CoilUtils;
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.disposables.CompositeDisposable;
 import io.reactivex.rxjava3.disposables.Disposable;
 import io.reactivex.rxjava3.schedulers.Schedulers;
@@ -234,6 +237,7 @@ public final class VideoDetailFragment
     private AppCompatSeekBar ratingSlider;
     private TextView ratingValueText;
     private LinearLayout ratingPanel;
+    private TextView modelRatingText;
     private Integer currentRating = null;
 
     private ContentObserver settingsContentObserver;
@@ -560,6 +564,44 @@ public final class VideoDetailFragment
         };
     }
 
+    /**
+     * Shows how adaptive shuffle rates the track, beside the user's rating. Only for a rated
+     * track, so the model's view cannot sway the rating.
+     *
+     * @param info the track shown
+     */
+    private void showModelRating(@Nullable final StreamInfo info) {
+        modelRatingText.setVisibility(View.GONE);
+        if (info == null || currentRating == null || !PreferenceManager
+                .getDefaultSharedPreferences(requireContext())
+                .getBoolean(getString(R.string.adaptive_shuffle_enabled_key), false)) {
+            return;
+        }
+        final android.content.Context appContext = requireContext().getApplicationContext();
+        final PlayQueue queue = isPlayerAvailable() ? player.getPlayQueue() : null;
+        final PlayQueueItem item = new PlayQueueItem(info);
+        disposables.add(Single.fromCallable(() -> {
+            final AdaptivePlayerIntegration integration =
+                    AdaptiveShuffleHolder.INSTANCE.get(appContext);
+            integration.ensureInitialised();
+            return Optional.ofNullable(integration.standingOf(item, queue));
+        })
+                .subscribeOn(AdaptiveShuffleHolder.SCHEDULER)
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(standing -> {
+                    if (!standing.isPresent() || currentInfo != info || currentRating == null) {
+                        return;
+                    }
+                    final AdaptivePlayerIntegration.Standing s = standing.get();
+                    modelRatingText.setText(s.getRating() != null
+                            ? getString(R.string.model_rating_in_queue, s.getRating(),
+                                    s.getPredicted(), s.getOwnOffset())
+                            : getString(R.string.model_rating_alone, s.getPredicted(),
+                                    s.getOwnOffset()));
+                    modelRatingText.setVisibility(View.VISIBLE);
+                }, throwable -> Log.w(TAG, "Could not rate with adaptive shuffle", throwable)));
+    }
+
     private void setOnLongClickListeners() {
         binding.detailTitleRootLayout.setOnLongClickListener(makeOnLongClickListener(info ->
                 ShareUtils.copyToClipboard(requireContext(),
@@ -668,6 +710,7 @@ public final class VideoDetailFragment
         ratingPanel = binding.detailRatingPanel;
         ratingSlider = binding.detailRatingSlider;
         ratingValueText = binding.detailRatingValue;
+        modelRatingText = binding.detailModelRating;
 
         // Setup rating slider listener
         ratingSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -700,6 +743,7 @@ public final class VideoDetailFragment
                                     Toast.makeText(getContext(),
                                             getString(R.string.rating_saved, rating),
                                             Toast.LENGTH_SHORT).show();
+                                    showModelRating(currentInfo);
                                 },
                                 throwable -> Log.e(TAG, "Failed to save rating", throwable)
                         ));
@@ -723,6 +767,7 @@ public final class VideoDetailFragment
                                 .subscribe(
                                         () -> {
                                             currentRating = null;
+                                            modelRatingText.setVisibility(View.GONE);
                                             ratingPanel.setVisibility(View.GONE);
                                             Toast.makeText(getContext(),
                                                     R.string.rating_cleared,
@@ -1710,11 +1755,14 @@ public final class VideoDetailFragment
                             ratingSlider.setProgress(rating);
                             ratingValueText.setText(String.valueOf(rating));
                             ratingPanel.setVisibility(View.VISIBLE);
+                            showModelRating(info);
                         },
                         throwable -> Log.e(TAG, "Failed to load rating", throwable),
                         () -> {
                             // No rating found - show panel with default value
                             currentRating = null;
+                            // Only once rated, so the model's view cannot sway the rating
+                            modelRatingText.setVisibility(View.GONE);
                             ratingSlider.setProgress(5);
                             ratingValueText.setText("5");
                             ratingPanel.setVisibility(View.VISIBLE);
