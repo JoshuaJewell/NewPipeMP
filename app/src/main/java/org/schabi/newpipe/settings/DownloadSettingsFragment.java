@@ -285,6 +285,8 @@ public class DownloadSettingsFragment extends BasePreferenceFragment {
                 prepared.getPlan().getTotalEntries(), prepared.getPlan().getTracks().size(),
                 prepared.getPlan().getAlreadyHave().size(),
                 prepared.getPlan().getToDownload().size());
+        message += getString(R.string.library_download_scan,
+                prepared.getScannedFiles(), prepared.getMatchedOnDisk());
         if (!prepared.getUnloadedPlaylists().isEmpty()) {
             message += getString(R.string.library_download_unloaded,
                     String.join(", ", prepared.getUnloadedPlaylists()));

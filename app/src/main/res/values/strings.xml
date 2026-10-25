@@ -1019,8 +1019,9 @@
     <string name="api23_requirement_dialog_blogpost">Blogpost</string>
     <string name="library_download_title">Download library</string>
     <string name="library_download_summary">Download every playlist, yours and bookmarked, as audio: each track once into a Library folder in the audio download folder, with a playlist file per playlist</string>
-    <string name="library_download_collecting">Collecting your playlists…</string>
+    <string name="library_download_collecting">Collecting your playlists and checking downloaded files…</string>
     <string name="library_download_confirm">%1$d playlists (%2$d yours, %3$d bookmarked) with %4$d entries: %5$d distinct tracks.\n\n%6$d are already on the phone and %7$d will be downloaded into the Library folder of your audio download folder. A playlist file for each playlist is written there when it finishes.</string>
+    <string name="library_download_scan">\n\nFound %1$d audio files in the download folder; %2$d matched tracks in your library.</string>
     <string name="library_download_unloaded">\n\nThese bookmarked playlists could not be loaded and are left out: %1$s</string>
     <string name="library_download_start">Download</string>
     <string name="library_download_resume">Resume</string>

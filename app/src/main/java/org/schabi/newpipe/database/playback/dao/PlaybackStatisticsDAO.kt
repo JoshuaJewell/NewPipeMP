@@ -18,6 +18,12 @@ abstract class PlaybackStatisticsDAO {
     @Query("SELECT * FROM playback_statistics WHERE stream_id = :streamId")
     abstract fun getStatistics(streamId: Long): Maybe<PlaybackStatisticsEntity>
 
+    // Used inside @Transaction methods and by the synchronous adaptive-shuffle store.
+    // A Room Maybe is executed on Room's query executor; blocking on it while holding a
+    // transaction connection can deadlock the whole database (see the stall reports).
+    @Query("SELECT * FROM playback_statistics WHERE stream_id = :streamId")
+    abstract fun getStatisticsBlocking(streamId: Long): PlaybackStatisticsEntity?
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     internal abstract fun silentInsert(stats: PlaybackStatisticsEntity): Long
 
@@ -233,7 +239,7 @@ abstract class PlaybackStatisticsDAO {
     @Transaction
     open fun addPlayTime(streamId: Long, playTimeMillis: Long) {
         val now = OffsetDateTime.now()
-        val existing = getStatistics(streamId).blockingGet()
+        val existing = getStatisticsBlocking(streamId)
 
         if (existing == null) {
             // Create new entry
@@ -348,7 +354,7 @@ abstract class PlaybackStatisticsDAO {
     @Transaction
     open fun recordLeavePoint(streamId: Long, fraction: Double) {
         ensureStatsExist(streamId)
-        val stats = getStatistics(streamId).blockingGet() ?: return
+        val stats = getStatisticsBlocking(streamId) ?: return
         val next = LeavePointStats.add(
             LeavePointStats(stats.dropoutCount, stats.dropoutMean, stats.dropoutM2),
             fraction
@@ -357,7 +363,7 @@ abstract class PlaybackStatisticsDAO {
     }
 
     private fun ensureStatsExist(streamId: Long) {
-        val existing = getStatistics(streamId).blockingGet()
+        val existing = getStatisticsBlocking(streamId)
         if (existing == null) {
             silentInsert(
                 PlaybackStatisticsEntity(

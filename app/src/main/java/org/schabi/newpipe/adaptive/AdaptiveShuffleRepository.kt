@@ -102,9 +102,9 @@ class AdaptiveShuffleRepository(database: AppDatabase) : AdaptiveShuffleStore {
 
     fun recentlyPlayed(limit: Int) = featureQueriesDao.recentlyPlayedBlocking(limit)
 
-    fun getRestartCount(streamId: Long): Int = playbackStatsDao.getStatistics(streamId).blockingGet()?.restartCount ?: 0
+    fun getRestartCount(streamId: Long): Int = playbackStatsDao.getStatisticsBlocking(streamId)?.restartCount ?: 0
 
-    fun getPlaybackStatistics(streamId: Long): org.schabi.newpipe.database.playback.model.PlaybackStatisticsEntity? = playbackStatsDao.getStatistics(streamId).blockingGet()
+    fun getPlaybackStatistics(streamId: Long): org.schabi.newpipe.database.playback.model.PlaybackStatisticsEntity? = playbackStatsDao.getStatisticsBlocking(streamId)
 
     fun getLatestHistoryEntry(streamId: Long): org.schabi.newpipe.database.history.model.StreamHistoryEntity? = historyDao.getLatestEntry(streamId)
 
@@ -141,7 +141,7 @@ class AdaptiveShuffleRepository(database: AppDatabase) : AdaptiveShuffleStore {
 
     override fun getPendingById(id: Long): AdaptiveShufflePendingEventEntity? = pendingDao.getByIdBlocking(id)
 
-    override fun findLatestUnresolvedForStream(streamId: Long): Long? = pendingDao.findLatestUnresolvedForStream(streamId).blockingGet()
+    override fun findLatestUnresolvedForStream(streamId: Long): Long? = pendingDao.findLatestUnresolvedForStreamBlocking(streamId)
 
     override fun resolvePending(id: Long, reward: Double, rawInputsBlob: ByteArray, resolvedAt: Long) {
         pendingDao.resolveWithInputs(id, reward, rawInputsBlob, resolvedAt)

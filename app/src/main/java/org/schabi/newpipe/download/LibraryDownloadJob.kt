@@ -18,6 +18,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.documentfile.provider.DocumentFile
+import androidx.preference.PreferenceManager
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.CompositeDisposable
@@ -30,10 +31,12 @@ import java.io.Serializable
 import org.schabi.newpipe.NewPipeDatabase
 import org.schabi.newpipe.R
 import org.schabi.newpipe.database.stream.model.StreamEntity
+import org.schabi.newpipe.download.library.LibraryFileMatcher
 import org.schabi.newpipe.download.library.LibraryPlan
 import org.schabi.newpipe.download.library.LibraryPlanner
 import org.schabi.newpipe.download.library.LibraryPlaylist
 import org.schabi.newpipe.download.library.LibraryTrack
+import org.schabi.newpipe.download.library.LocalAudioFile
 import org.schabi.newpipe.download.library.M3u
 import org.schabi.newpipe.download.library.M3uEntry
 import org.schabi.newpipe.download.library.PlannedPlaylist
@@ -96,7 +99,9 @@ object LibraryDownloadJob {
         val playlists: List<PlannedPlaylist>,
         val tracks: Map<String, LibraryTrack>,
         // Tracks that already had a local copy when the job was planned: key to file URI.
-        val existing: Map<String, String>,
+        // Mutable so a resumed job can adopt files found on disk but missing from the
+        // database. The Java field type is still java.util.Map for old saved states.
+        var existing: MutableMap<String, String>,
         val unloadedPlaylists: List<String>
     ) : Serializable {
         var pausedReason: String? = null
@@ -115,7 +120,9 @@ object LibraryDownloadJob {
         val localPlaylists: Int,
         val remotePlaylists: Int,
         val unloadedPlaylists: List<String>,
-        val existing: Map<String, String>
+        val existing: Map<String, String>,
+        val scannedFiles: Int,
+        val matchedOnDisk: Int
     )
 
     private val main = Handler(Looper.getMainLooper())
@@ -128,6 +135,7 @@ object LibraryDownloadJob {
     private var networkFailures = 0
     private var saveScheduled = false
     private var finishing = false
+    private var starting = false
 
     @JvmStatic
     fun isRunning(): Boolean = connection != null
@@ -140,7 +148,11 @@ object LibraryDownloadJob {
         if (!file.exists()) return null
         return try {
             ObjectInputStream(file.inputStream().buffered()).use { it.readObject() as State }
-                .also { state = it }
+                .also { loaded ->
+                    // Older states stored an immutable map; make it safe to extend on resume.
+                    loaded.existing = loaded.existing.toMutableMap()
+                    state = loaded
+                }
         } catch (e: Exception) {
             Log.w(TAG, "Discarding unreadable library download state", e)
             null
@@ -149,7 +161,7 @@ object LibraryDownloadJob {
 
     @JvmStatic
     fun discard(context: Context) {
-        if (isRunning()) return
+        if (isRunning() || starting) return
         state = null
         File(context.filesDir, STATE_FILE).delete()
     }
@@ -162,16 +174,24 @@ object LibraryDownloadJob {
 
     @JvmStatic
     fun start(context: Context, prepared: Prepared) {
-        if (isRunning()) return
+        if (isRunning() || starting) return
         val items = prepared.plan.toDownload.map { Item(it) }
-        state = State(items, prepared.plan.playlists, prepared.plan.tracks, prepared.existing, prepared.unloadedPlaylists)
+        state = State(
+            items,
+            prepared.plan.playlists,
+            prepared.plan.tracks,
+            prepared.existing.toMutableMap(),
+            prepared.unloadedPlaylists
+        )
         run(context)
     }
 
     // Continues a saved job; with retryFailed, failed tracks are tried again from scratch.
+    // A state saved by an older build can still list files that are already on the phone:
+    // check the download folder before starting, so resuming does not fetch them again.
     @JvmStatic
     fun resume(context: Context, retryFailed: Boolean) {
-        if (isRunning()) return
+        if (isRunning() || starting) return
         val s = savedState(context) ?: return
         s.pausedReason = null
         for (item in s.items) {
@@ -182,7 +202,27 @@ object LibraryDownloadJob {
                 item.notBefore = 0L
             }
         }
-        run(context)
+        val app = context.applicationContext
+        val tracks = s.tracks
+        val plannedNames = plannedNamesFor(s)
+        starting = true
+        disposables.add(
+            Single.fromCallable {
+                LibraryFileMatcher.match(tracks, plannedNames, scanAudioFolder(app))
+            }
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(
+                    { found ->
+                        applyFoundFiles(s, found)
+                        run(app)
+                    },
+                    { e ->
+                        Log.w(TAG, "Could not check existing files before resuming", e)
+                        run(app)
+                    }
+                )
+        )
     }
 
     @JvmStatic
@@ -237,14 +277,77 @@ object LibraryDownloadJob {
             }
         }
 
+        // Offline mappings are only one source of truth. After an update they can be
+        // missing, flagged unavailable, or point at SAF URIs the app can no longer
+        // resolve, while the audio files themselves are still in the download folder.
         val existing = HashMap<String, String>()
         for (m in db.offlineFileMappingDAO().getAllBlocking()) {
-            if (m.isAvailable && fileExists(context, Uri.parse(m.localFileUri))) {
+            if (fileExists(context, Uri.parse(m.localFileUri))) {
                 existing[LibraryPlanner.trackKey(m.serviceId, m.streamUrl)] = m.localFileUri
             }
         }
-        val plan = LibraryPlanner.plan(playlists, existing.keys)
-        return Prepared(plan, local, remote, unloaded, existing.filterKeys { it in plan.tracks })
+
+        // Plan once with no tracks marked as present to learn the name of every track,
+        // then match those names against the files actually on disk. Files found here
+        // also reserve their names, so a missing track is never downloaded over one.
+        val mappingCount = existing.size
+        val allNames = LibraryPlanner.plan(playlists, emptySet())
+        val namesByKey = allNames.toDownload.associate { it.key to it.baseName }
+        val files = scanAudioFolder(context)
+        val matched = LibraryFileMatcher.match(allNames.tracks, namesByKey, files)
+        for ((key, uri) in matched) {
+            if (!existing.containsKey(key)) existing[key] = uri
+        }
+        val takenNames = files.mapTo(HashSet()) { LibraryFileMatcher.baseName(it.name) }
+        val plan = LibraryPlanner.plan(playlists, existing.keys, takenNames)
+        Log.i(
+            TAG,
+            "Library plan: ${files.size} audio files found, ${matched.size} matched on disk, " +
+                "$mappingCount from offline mappings, ${plan.toDownload.size} to download"
+        )
+        return Prepared(
+            plan,
+            local,
+            remote,
+            unloaded,
+            existing.filterKeys { it in plan.tracks },
+            files.size,
+            matched.size
+        )
+    }
+
+    private fun audioFolderPath(context: Context): String? =
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .getString(context.getString(R.string.download_path_audio_key), null)
+
+    private fun scanAudioFolder(context: Context): List<LocalAudioFile> =
+        LibraryFileScanner.scan(context, audioFolderPath(context))
+
+    // Rebuilds the names the planner would give every track of a saved job. The state
+    // keeps the planned playlists and tracks, not the original LibraryPlaylist objects.
+    private fun plannedNamesFor(s: State): Map<String, String> {
+        val playlists = s.playlists.map { p ->
+            LibraryPlaylist(p.name, p.keys.mapNotNull { key -> s.tracks[key] })
+        }
+        return LibraryPlanner.plan(playlists, emptySet()).toDownload
+            .associate { it.key to it.baseName }
+    }
+
+    // Marks items whose files were found as done and remembers their URI for the .m3u8
+    // files. fileName stays null so writePlaylists resolves a relative path from the URI.
+    private fun applyFoundFiles(s: State, found: Map<String, String>) {
+        if (found.isEmpty()) return
+        val byKey = s.items.associateBy { it.planned.key }
+        for ((key, uri) in found) {
+            if (!s.tracks.containsKey(key)) continue
+            if (!s.existing.containsKey(key)) s.existing[key] = uri
+            val item = byKey[key]
+            if (item != null && item.status != Status.DONE) {
+                item.status = Status.DONE
+                item.error = null
+                item.fileName = null
+            }
+        }
     }
 
     private fun trackOf(item: StreamInfoItem) = LibraryTrack(
@@ -266,6 +369,7 @@ object LibraryDownloadJob {
     private fun run(context: Context) {
         val app = context.applicationContext
         appContext = app
+        starting = false
         networkFailures = 0
         finishing = false
         val conn = object : ServiceConnection {
@@ -302,6 +406,7 @@ object LibraryDownloadJob {
     }
 
     private fun stop() {
+        starting = false
         disposables.clear()
         main.removeCallbacks(pumpRunnable)
         binder?.removeMissionEventListener(missionListener)
