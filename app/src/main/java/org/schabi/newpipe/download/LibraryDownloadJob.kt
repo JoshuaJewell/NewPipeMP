@@ -316,12 +316,10 @@ object LibraryDownloadJob {
         )
     }
 
-    private fun audioFolderPath(context: Context): String? =
-        PreferenceManager.getDefaultSharedPreferences(context)
+    private fun audioFolderPath(context: Context): String? = PreferenceManager.getDefaultSharedPreferences(context)
             .getString(context.getString(R.string.download_path_audio_key), null)
 
-    private fun scanAudioFolder(context: Context): List<LocalAudioFile> =
-        LibraryFileScanner.scan(context, audioFolderPath(context))
+    private fun scanAudioFolder(context: Context): List<LocalAudioFile> = LibraryFileScanner.scan(context, audioFolderPath(context))
 
     // Rebuilds the names the planner would give every track of a saved job. The state
     // keeps the planned playlists and tracks, not the original LibraryPlaylist objects.

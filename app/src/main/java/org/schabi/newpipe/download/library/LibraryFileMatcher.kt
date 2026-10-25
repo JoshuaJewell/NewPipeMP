@@ -42,8 +42,7 @@ object LibraryFileMatcher {
         .thenBy { it.name }
 
     @JvmStatic
-    fun isAudioFile(name: String): Boolean =
-        name.substringAfterLast('.', "").lowercase(Locale.ROOT) in AUDIO_EXTENSIONS
+    fun isAudioFile(name: String): Boolean = name.substringAfterLast('.', "").lowercase(Locale.ROOT) in AUDIO_EXTENSIONS
 
     @JvmStatic
     fun baseName(name: String): String = name.substringBeforeLast('.', name)
@@ -101,7 +100,9 @@ object LibraryFileMatcher {
                 }
 
                 idKeys.isNotEmpty() -> idKeys
+
                 exactKeys.isNotEmpty() -> exactKeys
+
                 else -> emptyList()
             }
             if (candidates.isEmpty()) {
