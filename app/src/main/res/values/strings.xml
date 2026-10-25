@@ -1025,6 +1025,11 @@
     <string name="library_download_unloaded">\n\nThese bookmarked playlists could not be loaded and are left out: %1$s</string>
     <string name="library_download_start">Download</string>
     <string name="library_download_resume">Resume</string>
+    <string name="library_download_view_failures">View failures</string>
+    <string name="library_download_copy_report">Copy report</string>
+    <string name="library_download_failures_explanation">Tracks that fail before a download starts do not appear in Downloads. This report includes all failures saved by the library job. Copy it before retrying or starting over, since retrying replaces the previous errors. The report contains track titles and URLs; review it before sharing.</string>
+    <string name="library_download_failure_attempts">Attempts: %1$d</string>
+    <string name="library_download_failure_unknown">No error details were saved.</string>
     <string name="library_download_retry_failed">Retry failed</string>
     <string name="library_download_start_over">Start over</string>
     <string name="library_download_pause">Pause</string>

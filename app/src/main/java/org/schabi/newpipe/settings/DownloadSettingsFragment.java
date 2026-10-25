@@ -1,6 +1,8 @@
 package org.schabi.newpipe.settings;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -221,7 +223,7 @@ public class DownloadSettingsFragment extends BasePreferenceFragment {
     private void onLibraryDownloadClicked() {
         final LibraryDownloadJob.State state = LibraryDownloadJob.savedState(ctx);
         if (LibraryDownloadJob.isRunning()) {
-            new AlertDialog.Builder(ctx)
+            final AlertDialog.Builder runningDialog = new AlertDialog.Builder(ctx)
                     .setTitle(R.string.library_download_title)
                     .setMessage(state == null ? "" : LibraryDownloadJob.describe(state))
                     .setPositiveButton(R.string.library_download_pause, (d, w) -> {
@@ -229,8 +231,12 @@ public class DownloadSettingsFragment extends BasePreferenceFragment {
                                 getString(R.string.library_download_paused_by_user));
                         updateLibraryDownloadSummary();
                     })
-                    .setNegativeButton(R.string.ok, null)
-                    .show();
+                    .setNegativeButton(R.string.ok, null);
+            if (state != null && state.count(LibraryDownloadJob.Status.FAILED) > 0) {
+                runningDialog.setNeutralButton(R.string.library_download_view_failures,
+                        (d, w) -> showLibraryDownloadFailures(state));
+            }
+            runningDialog.show();
             return;
         }
         if (state != null) {
@@ -252,6 +258,10 @@ public class DownloadSettingsFragment extends BasePreferenceFragment {
                     LibraryDownloadJob.resume(ctx, true);
                     updateLibraryDownloadSummary();
                 });
+            }
+            if (state.count(LibraryDownloadJob.Status.FAILED) > 0) {
+                builder.setNegativeButton(R.string.library_download_view_failures,
+                        (d, w) -> showLibraryDownloadFailures(state));
             }
             builder.show();
             return;
@@ -275,6 +285,39 @@ public class DownloadSettingsFragment extends BasePreferenceFragment {
                     .setPositiveButton(R.string.ok, null)
                     .show();
         }));
+    }
+
+    private void showLibraryDownloadFailures(final LibraryDownloadJob.State state) {
+        final StringBuilder report = new StringBuilder(LibraryDownloadJob.describe(state));
+        report.append("\n\n").append(getString(R.string.library_download_failures_explanation));
+        int number = 0;
+        for (final LibraryDownloadJob.Item item : state.getItems()) {
+            if (item.getStatus() != LibraryDownloadJob.Status.FAILED) {
+                continue;
+            }
+            final var track = item.getPlanned().getTrack();
+            report.append("\n\n").append(++number).append(". ")
+                    .append(track.getTitle()).append(" — ").append(track.getArtist())
+                    .append("\n").append(track.getUrl())
+                    .append("\n").append(getString(R.string.library_download_failure_attempts,
+                            item.getAttempts()))
+                    .append("\n").append(item.getError() == null
+                            ? getString(R.string.library_download_failure_unknown) : item.getError());
+        }
+        final String text = report.toString();
+        new AlertDialog.Builder(ctx)
+                .setTitle(R.string.library_download_view_failures)
+                .setMessage(text)
+                .setPositiveButton(R.string.library_download_copy_report, (d, w) -> {
+                    final ClipboardManager clipboard =
+                            (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (clipboard != null) {
+                        clipboard.setPrimaryClip(ClipData.newPlainText(
+                                getString(R.string.library_download_view_failures), text));
+                    }
+                })
+                .setNegativeButton(R.string.ok, null)
+                .show();
     }
 
     private void confirmLibraryDownload(final LibraryDownloadJob.Prepared prepared) {
