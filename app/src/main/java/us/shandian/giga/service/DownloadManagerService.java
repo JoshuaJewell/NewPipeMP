@@ -3,6 +3,7 @@ package us.shandian.giga.service;
 import static org.schabi.newpipe.BuildConfig.APPLICATION_ID;
 import static org.schabi.newpipe.BuildConfig.DEBUG;
 
+import android.app.ForegroundServiceStartNotAllowedException;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -19,6 +20,7 @@ import android.net.NetworkInfo;
 import android.net.NetworkRequest;
 import android.net.Uri;
 import android.os.Binder;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Handler.Callback;
 import android.os.IBinder;
@@ -42,6 +44,7 @@ import org.schabi.newpipe.NewPipeDatabase;
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.database.download.model.OfflineFileMappingEntity;
 import org.schabi.newpipe.download.DownloadActivity;
+import org.schabi.newpipe.download.LibraryDownloadJob;
 import org.schabi.newpipe.extractor.ServiceList;
 import org.schabi.newpipe.extractor.exceptions.ExtractionException;
 import org.schabi.newpipe.extractor.stream.StreamInfo;
@@ -97,6 +100,7 @@ public class DownloadManagerService extends Service {
     private Notification mNotification;
     private Handler mHandler;
     private boolean mForeground = false;
+    private boolean mForegroundStartBlocked = false;
     private NotificationManager mNotificationManager = null;
     private boolean mDownloadNotificationEnable = true;
 
@@ -207,6 +211,8 @@ public class DownloadManagerService extends Service {
         String action = intent.getAction();
         if (action != null) {
             if (action.equals(Intent.ACTION_RUN)) {
+                // An explicit request may retry after the user returns to the app.
+                mForegroundStartBlocked = false;
                 mHandler.post(() -> startMission(intent));
             } else if (downloadDoneNotification != null) {
                 if (action.equals(ACTION_RESET_DOWNLOAD_FINISHED) || action.equals(ACTION_OPEN_DOWNLOADS_FINISHED)) {
@@ -257,6 +263,8 @@ public class DownloadManagerService extends Service {
 
     @Override
     public IBinder onBind(Intent intent) {
+        // A new UI binding allows another foreground promotion attempt.
+        mForegroundStartBlocked = false;
         return mBinder;
     }
 
@@ -272,7 +280,7 @@ public class DownloadManagerService extends Service {
                 mManager.setFinished(mission);
                 saveOfflineMappingIfRequested(mission);
                 handleConnectivityState(false);
-                updateForegroundState(mManager.runMissions());
+                updateForegroundState(!mForegroundStartBlocked && mManager.runMissions());
                 break;
             case MESSAGE_RUNNING:
                 updateForegroundState(true);
@@ -280,7 +288,7 @@ public class DownloadManagerService extends Service {
             case MESSAGE_ERROR:
                 notifyFailedDownload(mission);
                 handleConnectivityState(false);
-                updateForegroundState(mManager.runMissions());
+                updateForegroundState(!mForegroundStartBlocked && mManager.runMissions());
                 break;
             case MESSAGE_PAUSED:
                 updateForegroundState(mManager.getRunningMissionsCount() > 0);
@@ -340,10 +348,33 @@ public class DownloadManagerService extends Service {
     }
 
     public void updateForegroundState(boolean state) {
+        if (state && mForegroundStartBlocked) {
+            mManager.pauseAllMissions(false);
+            return;
+        }
         if (state == mForeground) return;
 
         if (state) {
-            startForeground(FOREGROUND_NOTIFICATION_ID, mNotification);
+            try {
+                startForeground(FOREGROUND_NOTIFICATION_ID, mNotification);
+            } catch (IllegalStateException error) {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                        || !(error instanceof ForegroundServiceStartNotAllowedException)) {
+                    throw error;
+                }
+                // This call happens asynchronously in the service's message handler,
+                // outside the library job's startMission exception handler. Retain all
+                // mission files and metadata, but do not run without foreground status.
+                Log.w(TAG, "Android denied download foreground promotion; pausing", error);
+                mForegroundStartBlocked = true;
+                mManager.pauseAllMissions(false);
+                manageLock(false);
+                if (LibraryDownloadJob.isRunning()) {
+                    LibraryDownloadJob.pause(
+                            "Android blocked background downloads. Open the app and resume.");
+                }
+                return;
+            }
         } else {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
         }
