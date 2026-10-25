@@ -217,10 +217,14 @@ internal object ReplayHarness {
             scoredEvents = p.size,
             spearmanReward = if (p.size > 1) spearman(p, rewards.toDoubleArray()) else Double.NaN,
             spearmanCompletion = if (p.size > 1) spearman(p, ratios.toDoubleArray()) else Double.NaN,
-            meanSquaredRewardError = if (p.isEmpty()) Double.NaN else p.indices.sumOf { j ->
-                val error = p[j] - rewards[j]
-                error * error
-            } / p.size,
+            meanSquaredRewardError = if (p.isEmpty()) {
+                Double.NaN
+            } else {
+                p.indices.sumOf { j ->
+                    val error = p[j] - rewards[j]
+                    error * error
+                } / p.size
+            },
             repetition = RepetitionMetrics.compute(served)
         )
     }
