@@ -138,7 +138,7 @@ object LibraryDownloadJob {
     private var starting = false
 
     @JvmStatic
-    fun isRunning(): Boolean = connection != null
+    fun isRunning(): Boolean = connection != null || starting
 
     // The saved job, if any, loading it from disk the first time.
     @JvmStatic
@@ -174,7 +174,7 @@ object LibraryDownloadJob {
 
     @JvmStatic
     fun start(context: Context, prepared: Prepared) {
-        if (isRunning() || starting) return
+        if (isRunning() || LibraryRetagJob.isRunning()) return
         val items = prepared.plan.toDownload.map { Item(it) }
         state = State(
             items,
@@ -191,7 +191,7 @@ object LibraryDownloadJob {
     // check the download folder before starting, so resuming does not fetch them again.
     @JvmStatic
     fun resume(context: Context, retryFailed: Boolean) {
-        if (isRunning() || starting) return
+        if (isRunning() || LibraryRetagJob.isRunning()) return
         val s = savedState(context) ?: return
         s.pausedReason = null
         for (item in s.items) {
@@ -236,7 +236,12 @@ object LibraryDownloadJob {
     // Planning
     // ---------------------------------------------------------------------------------
 
-    private fun gather(context: Context): Prepared {
+    // Destructive metadata edits must not use the loose filename-suffix fallback.
+    fun prepareRetag(context: Context): Single<Prepared> = Single.fromCallable { gather(context.applicationContext, strictFileMatching = true) }
+        .subscribeOn(Schedulers.io())
+        .observeOn(AndroidSchedulers.mainThread())
+
+    private fun gather(context: Context, strictFileMatching: Boolean = false): Prepared {
         val db = NewPipeDatabase.getInstance(context)
         val playlists = ArrayList<LibraryPlaylist>()
 
@@ -294,7 +299,7 @@ object LibraryDownloadJob {
         val allNames = LibraryPlanner.plan(playlists, emptySet())
         val namesByKey = allNames.toDownload.associate { it.key to it.baseName }
         val files = scanAudioFolder(context)
-        val matched = LibraryFileMatcher.match(allNames.tracks, namesByKey, files)
+        val matched = LibraryFileMatcher.match(allNames.tracks, namesByKey, files, allowFuzzy = !strictFileMatching)
         for ((key, uri) in matched) {
             if (!existing.containsKey(key)) existing[key] = uri
         }

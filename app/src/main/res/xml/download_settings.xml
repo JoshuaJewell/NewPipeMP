@@ -86,4 +86,11 @@
         app:singleLineTitle="false"
         app:iconSpaceReserved="false" />
 
+    <Preference
+        android:key="library_retag"
+        android:title="@string/library_retag_title"
+        android:summary="@string/library_retag_summary"
+        app:singleLineTitle="false"
+        app:iconSpaceReserved="false" />
+
 </PreferenceScreen>

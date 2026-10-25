@@ -105,6 +105,16 @@ internal class OpusTagEditor(private val file: File) {
         rewriteWithTags(vendor, list)
     }
 
+    // Change only album/position; keep duplicate comments, artwork, ratings and vendor.
+    fun writeAlbumAndTrack(album: String, number: Int) {
+        val bytes = readTagsPacket() ?: error("Opus tags packet missing")
+        val (vendor, comments) = parseOpusTags(bytes) ?: error("Malformed OpusTags")
+        val kept = comments.filterNot {
+            it.substringBefore('=').uppercase() in setOf("ALBUM", "TRACKNUMBER", "TRACKTOTAL", "TOTALTRACKS")
+        }
+        rewriteWithTags(vendor, kept + listOf("ALBUM=$album", "TRACKNUMBER=$number"))
+    }
+
     // ============================================================================
     // Implementation
     // ============================================================================

@@ -24,6 +24,8 @@ import com.nononsenseapps.filepicker.Utils;
 
 import org.schabi.newpipe.R;
 import org.schabi.newpipe.download.LibraryDownloadJob;
+import org.schabi.newpipe.download.LibraryRetagDialog;
+import org.schabi.newpipe.download.LibraryRetagJob;
 import org.schabi.newpipe.streams.io.NoFileManagerSafeGuard;
 import org.schabi.newpipe.streams.io.StoredDirectoryHelper;
 import org.schabi.newpipe.util.FilePickerActivityHelper;
@@ -189,6 +191,8 @@ public class DownloadSettingsFragment extends BasePreferenceFragment {
             launchDirectoryPicker(requestDownloadVideoPathLauncher);
         } else if (key.equals(downloadPathAudioPreference)) {
             launchDirectoryPicker(requestDownloadAudioPathLauncher);
+        } else if (key.equals("library_retag")) {
+            LibraryRetagDialog.show(ctx, libraryDisposables);
         } else if (key.equals(getString(R.string.library_download_key))) {
             onLibraryDownloadClicked();
         } else {
@@ -221,6 +225,10 @@ public class DownloadSettingsFragment extends BasePreferenceFragment {
     }
 
     private void onLibraryDownloadClicked() {
+        if (LibraryRetagJob.isRunning()) {
+            showMessageDialog(R.string.library_retag_title, R.string.library_retag_busy);
+            return;
+        }
         final LibraryDownloadJob.State state = LibraryDownloadJob.savedState(ctx);
         if (LibraryDownloadJob.isRunning()) {
             final AlertDialog.Builder runningDialog = new AlertDialog.Builder(ctx)

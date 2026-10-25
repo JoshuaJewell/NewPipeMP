@@ -128,6 +128,18 @@ class LibraryFileMatcherTest {
     }
 
     @Test
+    fun `retag matching does not use loose filename suffix matches`() {
+        val (tracks, plannedNames) = names(t("aaaaaaaaaaa", "Song"))
+        val matched = LibraryFileMatcher.match(
+            tracks,
+            plannedNames,
+            listOf(file("Artist - Song (Official Audio).m4a")),
+            allowFuzzy = false
+        )
+        assertTrue(matched.isEmpty())
+    }
+
+    @Test
     fun `audio extensions are recognised case insensitively`() {
         assertTrue(LibraryFileMatcher.isAudioFile("track.M4A"))
         assertTrue(LibraryFileMatcher.isAudioFile("track.opus"))

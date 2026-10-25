@@ -1035,4 +1035,16 @@
     <string name="library_download_pause">Pause</string>
     <string name="library_download_paused_by_user">Paused by you.</string>
     <string name="library_download_error">Could not collect the library: %1$s</string>
+    <string name="library_retag_continue">Choose playlists</string>
+    <string name="library_retag_last_report">Last report</string>
+    <string name="library_retag_title">Retag existing library</string>
+    <string name="library_retag_summary">Choose album playlists for existing audio files, without downloading again. Ambiguous tracks are left unchanged.</string>
+    <string name="library_retag_collecting">Checking recovery copies, playlists and existing files…</string>
+    <string name="library_retag_exclude">Check collection playlists to EXCLUDE</string>
+    <string name="library_retag_preview">Preview album changes</string>
+    <string name="library_retag_apply">Apply album tags</string>
+    <string name="library_retag_working">Updating tags safely, one file at a time. Keep the app open. This can take several minutes.</string>
+    <string name="library_retag_busy">Pause Download library and wait for any retag operation to finish before continuing.</string>
+    <string name="library_retag_unloaded">Some bookmarked playlists could not be loaded. Nothing will be retagged because playlist membership may be incomplete. Try again later:</string>
+    <string name="library_retag_warning">Only files belonging to exactly one eligible playlist will be retagged. Album and track number will come from that playlist; obsolete track totals will be cleared. Other tags and audio are preserved. MP3, M4A, FLAC and Opus are supported. No audio will be downloaded or moved. Stop playback and all downloads first. Keep a separate backup: completed changes have no automatic undo. An interrupted write has a recovery copy; open Retag existing library again to restore it. VLC may need its media library refreshed.</string>
 </resources>

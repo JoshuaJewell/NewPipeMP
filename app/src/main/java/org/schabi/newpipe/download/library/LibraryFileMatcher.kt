@@ -55,7 +55,8 @@ object LibraryFileMatcher {
     fun match(
         tracks: Map<String, LibraryTrack>,
         plannedNames: Map<String, String>,
-        files: List<LocalAudioFile>
+        files: List<LocalAudioFile>,
+        allowFuzzy: Boolean = true
     ): Map<String, String> {
         if (tracks.isEmpty() || files.isEmpty()) return emptyMap()
 
@@ -105,7 +106,7 @@ object LibraryFileMatcher {
 
                 else -> emptyList()
             }
-            if (candidates.isEmpty()) {
+            if (allowFuzzy && candidates.isEmpty()) {
                 candidates = fuzzyCandidates(normalized, byNormalizedName, idKeys)
             }
 

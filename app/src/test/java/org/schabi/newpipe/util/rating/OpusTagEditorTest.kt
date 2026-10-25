@@ -15,6 +15,33 @@ class OpusTagEditorTest {
     @JvmField
     val tmp = TemporaryFolder()
 
+    @Test
+    fun `album changes keep artwork rating source and all unrelated comments`() {
+        val file = fixture()
+        val editor = OpusTagEditor(file)
+        editor.writeFullComments(
+            mapOf(
+                "ALBUM" to "Everything",
+                "TRACKNUMBER" to "400",
+                "TRACKTOTAL" to "2000",
+                "RATING" to "80",
+                "PURL" to "https://example.com/source",
+                "CUSTOM" to "preserve me"
+            ),
+            artworkBytes = ByteArray(100_000) { (it % 251).toByte() },
+            artworkMime = "image/png"
+        )
+        val unrelated = editor.readAllComments()!!.filterNot {
+            it.substringBefore('=') in setOf("ALBUM", "TRACKNUMBER", "TRACKTOTAL")
+        }
+        editor.writeAlbumAndTrack("Specific album", 3)
+        val after = editor.readAllComments()!!
+        assertTrue(after.containsAll(unrelated))
+        assertTrue("ALBUM=Specific album" in after)
+        assertTrue("TRACKNUMBER=3" in after)
+        assertTrue(after.none { it.startsWith("TRACKTOTAL=") })
+    }
+
     private fun fixture(): File {
         val src = File("src/test/resources/audio/silence-1s.opus")
         val dst = tmp.newFile("silence-1s.opus")
