@@ -501,9 +501,10 @@ object LibraryDownloadJob {
         item.status = Status.ACTIVE
         item.attempts += 1
         val t = item.planned.track
-        // Retries always extract afresh: a cached stream URL may be the one that failed.
+        // Every download attempt extracts afresh, including a user-requested retry that
+        // resets attempts to zero. Cached empty stream lists must not poison retries.
         disposables.add(
-            ExtractorHelper.getStreamInfo(t.serviceId, t.url, item.attempts > 1)
+            ExtractorHelper.getStreamInfo(t.serviceId, t.url, true)
                 .subscribeOn(Schedulers.io())
                 .map { info -> queueDownload(context, item, info) }
                 .observeOn(AndroidSchedulers.mainThread())
@@ -537,7 +538,7 @@ object LibraryDownloadJob {
                 return
             }
 
-            causedBy<ContentNotAvailableException>(e) || e is NoAudioException -> {
+            causedBy<ContentNotAvailableException>(e) -> {
                 item.status = Status.FAILED
                 item.error = e.message ?: "Not available"
             }
@@ -604,7 +605,14 @@ object LibraryDownloadJob {
         val t = planned.track
         val streams: List<AudioStream> =
             ListHelper.getStreamsOfSpecifiedDelivery(info.audioStreams, DeliveryMethod.PROGRESSIVE_HTTP)
-        if (streams.isEmpty()) throw NoAudioException()
+        if (streams.isEmpty()) {
+            val deliveryCounts = info.audioStreams.groupingBy { it.deliveryMethod }.eachCount()
+            throw NoAudioException(
+                "Extractor returned ${info.audioStreams.size} audio streams " +
+                    "($deliveryCounts); none use progressive HTTP supported by the downloader. " +
+                    "Video streams: ${info.videoStreams.size}; video-only streams: ${info.videoOnlyStreams.size}."
+            )
+        }
         val stream = streams[ListHelper.getDefaultAudioFormat(context, streams)]
         val format = stream.format
         val opus = format == MediaFormat.WEBMA_OPUS
@@ -866,5 +874,5 @@ object LibraryDownloadJob {
         return false
     }
 
-    private class NoAudioException : Exception("No downloadable audio stream")
+    private class NoAudioException(details: String) : Exception("No downloadable audio stream. $details")
 }
