@@ -302,7 +302,8 @@ public class DownloadSettingsFragment extends BasePreferenceFragment {
                     .append("\n").append(getString(R.string.library_download_failure_attempts,
                             item.getAttempts()))
                     .append("\n").append(item.getError() == null
-                            ? getString(R.string.library_download_failure_unknown) : item.getError());
+                            ? getString(R.string.library_download_failure_unknown)
+                            : item.getError());
         }
         final String text = report.toString();
         new AlertDialog.Builder(ctx)

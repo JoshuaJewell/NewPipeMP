@@ -49,7 +49,8 @@ internal object ReplayHarness {
         val thompson: Boolean,
         val discount: Double = 1.0,
         // Spec section 6.6: per-track offsets on top of the shared weights.
-        val hybrid: Boolean = false
+        val hybrid: Boolean = false,
+        val simpleBaseline: Boolean = false
     )
 
     val STAGES: List<Stage> = listOf(
@@ -82,6 +83,29 @@ internal object ReplayHarness {
             hybrid = true
         )
     )
+
+    // Same model, priors, discount and candidate policy; only the available features
+    // change. This isolates the value of additional predictors, not the serving policy.
+    val ABLATION_STAGES: List<Stage> = listOf(
+        STAGES.last().copy(label = "current full model"),
+        STAGES.last().copy(label = "preference + recency + transitions", simpleBaseline = true)
+    )
+
+    private val BASELINE_FEATURES = setOf(
+        FeatureSchema.BIAS,
+        FeatureSchema.IS_RATED,
+        FeatureSchema.USER_RATING,
+        FeatureSchema.COMPLETION_RATE,
+        FeatureSchema.DAYS_SINCE_PLAYED,
+        FeatureSchema.SAME_UPLOADER,
+        FeatureSchema.PLAYLIST_CO_MEMBERSHIP
+    )
+
+    internal fun ablate(x: DoubleArray, stage: Stage): DoubleArray {
+        if (!stage.simpleBaseline) return x
+        require(stage.schemaV3 && stage.hybrid)
+        return DoubleArray(x.size) { i -> if (i in BASELINE_FEATURES) x[i] else 0.0 }
+    }
 
     // The two model forms behind one face, so every stage replays the same way.
     private class ReplayModel(dimension: Int, discount: Double, hybrid: Boolean) {
@@ -126,6 +150,7 @@ internal object ReplayHarness {
         // Spearman between predicted reward and completion ratio. Unlike the reward,
         // this target is the same in every stage, so this column compares across them.
         val spearmanCompletion: Double,
+        val meanSquaredRewardError: Double,
         val repetition: RepetitionMetrics.Report
     )
 
@@ -169,7 +194,7 @@ internal object ReplayHarness {
 
             // Prediction, then learning, from the logged event.
             val raw = features.raw(context, e.item)
-            val x = scaler.transform(raw)
+            val x = ablate(scaler.transform(raw), stage)
             val reward = if (stage.continuousReward) {
                 RewardCalculator.fromRatio(e.completionRatio, e.restartDelta)
             } else {
@@ -192,6 +217,10 @@ internal object ReplayHarness {
             scoredEvents = p.size,
             spearmanReward = if (p.size > 1) spearman(p, rewards.toDoubleArray()) else Double.NaN,
             spearmanCompletion = if (p.size > 1) spearman(p, ratios.toDoubleArray()) else Double.NaN,
+            meanSquaredRewardError = if (p.isEmpty()) Double.NaN else p.indices.sumOf { j ->
+                val error = p[j] - rewards[j]
+                error * error
+            } / p.size,
             repetition = RepetitionMetrics.compute(served)
         )
     }
@@ -231,7 +260,7 @@ internal object ReplayHarness {
                 playlistCoMembershipWithPrev = 0
             )
         }
-        val vectors = candidates.map { scaler.transform(features.raw(context, it)) }
+        val vectors = candidates.map { ablate(scaler.transform(features.raw(context, it)), stage) }
         val chosen = if (stage.thompson) {
             val draw = model.draw(rng)
             vectors.indices.maxByOrNull { draw(vectors[it], candidates[it].streamId) }!!
@@ -275,6 +304,9 @@ internal object ReplayHarness {
                     recurrence
                 )
             )
+        }
+        for (r in reports) {
+            sb.append("${r.stage.label}: prequential reward MSE = ${r.meanSquaredRewardError}\n")
         }
         sb.append("rho(rew) uses each stage's own reward, so only rho(cr) compares across stages.\n")
         sb.append("Repetition columns are over ${reports.firstOrNull()?.repetition?.windowSize ?: 0} simulated picks; ")

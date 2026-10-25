@@ -32,7 +32,7 @@ class StagedReplayTest {
         var lastPlayedAt: Long? = null
     }
 
-    private fun syntheticLog(seed: Long, decisions: Int = 1500): List<ReplayHarness.Event> {
+    internal fun syntheticLog(seed: Long, decisions: Int = 1500): List<ReplayHarness.Event> {
         val rng = Random(seed)
         val tracks = ArrayList<Track>()
         var nextId = 1L
