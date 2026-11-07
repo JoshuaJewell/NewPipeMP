@@ -36,11 +36,14 @@ import java.nio.charset.StandardCharsets
 //      came back to the track (byte); and the item a user pick was chosen over, as a
 //      length-prefixed v8 blob of its own (length 0 for none). The greedy byte's 0x20 bit
 //      marks a user pick: a track the listener chose, not the model (spec section 6.7).
+//   9: the v8 layout, then the shape of the candidate set (spec section 6.8): a present
+//      byte, the candidate count (int) and the share of distinct uploaders (double).
 // Who chose a track. Ordinals are not persisted; RawInputsCodec stores bits.
 enum class Chooser { MODEL, BASELINE, USER }
 
 object RawInputsCodec {
-    private const val VERSION: Byte = 8
+    private const val VERSION: Byte = 9
+    private const val VERSION_8: Byte = 8
     private const val VERSION_7: Byte = 7
     private const val VERSION_2: Byte = 2
     private const val VERSION_3: Byte = 3
@@ -125,7 +128,8 @@ object RawInputsCodec {
                 Byte.SIZE_BYTES + // v3: greedy flag (0 no, 1 yes, 2 unknown)
                 Byte.SIZE_BYTES + Double.SIZE_BYTES + Int.SIZE_BYTES + // v3: outcome present, ratio, restart delta
                 Int.SIZE_BYTES + Byte.SIZE_BYTES + // v8: partial rewinds, returned
-                Int.SIZE_BYTES + (rejectedBlob?.size ?: 0) // v8: rejected item
+                Int.SIZE_BYTES + (rejectedBlob?.size ?: 0) + // v8: rejected item
+                Byte.SIZE_BYTES + Int.SIZE_BYTES + Double.SIZE_BYTES // v9: candidate shape
         val buf = ByteBuffer.allocate(capacity).order(ByteOrder.LITTLE_ENDIAN)
         buf.put(VERSION)
         buf.put(context.hourOfDay.toByte())
@@ -219,6 +223,10 @@ object RawInputsCodec {
         buf.put(if (outcome?.returned == true) 1.toByte() else 0.toByte())
         buf.putInt(rejectedBlob?.size ?: 0)
         rejectedBlob?.let { buf.put(it) }
+        val shapeKnown = context.candidateCount != null && context.candidateUploaderShare != null
+        buf.put(if (shapeKnown) 1.toByte() else 0.toByte())
+        buf.putInt(context.candidateCount ?: 0)
+        buf.putDouble(context.candidateUploaderShare ?: 0.0)
         return buf.array()
     }
 
@@ -275,13 +283,13 @@ object RawInputsCodec {
         val isOffline = buf.get() != 0.toByte()
         var conditions = ListeningConditions.UNKNOWN
         var events = ListenEventCounts.NONE
-        if (v == LEGACY_4 || v == LEGACY_5 || v == LEGACY_6 || v == VERSION_7 || v == VERSION) {
+        if (v == LEGACY_4 || v == LEGACY_5 || v == LEGACY_6 || v == VERSION_7 || v == VERSION_8 || v == VERSION) {
             val route = OutputRoute.values().getOrElse(buf.get().toInt()) { OutputRoute.OTHER }
             conditions = ListeningConditions(screenOn = buf.get() != 0.toByte(), outputRoute = route)
         }
         if (v == LEGACY_4) {
             buf.position(buf.position() + LEGACY_4_UNDECODED_BYTES)
-        } else if (v == LEGACY_5 || v == LEGACY_6 || v == VERSION_7 || v == VERSION) {
+        } else if (v == LEGACY_5 || v == LEGACY_6 || v == VERSION_7 || v == VERSION_8 || v == VERSION) {
             events = ListenEventCounts(
                 backwardSeeks = buf.getInt(),
                 forwardSeeks = buf.getInt(),
@@ -298,7 +306,9 @@ object RawInputsCodec {
         var outcome: Outcome? = null
         var chooser = Chooser.MODEL
         var rejected: CandidateItem? = null
-        if (v == VERSION_3 || v == VERSION_7 || v == VERSION) {
+        var candidateCount: Int? = null
+        var candidateUploaderShare: Double? = null
+        if (v == VERSION_3 || v == VERSION_7 || v == VERSION_8 || v == VERSION) {
             val code = buf.get().toInt()
             if (v != VERSION_3) {
                 chooser = when {
@@ -317,7 +327,7 @@ object RawInputsCodec {
             val restart = buf.getInt()
             var partialRewinds = 0
             var returned = false
-            if (v == VERSION) {
+            if (v == VERSION_8 || v == VERSION) {
                 partialRewinds = buf.getInt()
                 returned = buf.get() != 0.toByte()
                 val rejectedLen = buf.getInt()
@@ -325,6 +335,15 @@ object RawInputsCodec {
                     val arr = ByteArray(rejectedLen)
                     buf.get(arr)
                     rejected = decode(arr).item
+                }
+            }
+            if (v == VERSION) {
+                val shapePresent = buf.get() != 0.toByte()
+                val count = buf.getInt()
+                val share = buf.getDouble()
+                if (shapePresent) {
+                    candidateCount = count
+                    candidateUploaderShare = share
                 }
             }
             if (outcomePresent) outcome = Outcome(ratio, restart, partialRewinds, returned)
@@ -341,7 +360,9 @@ object RawInputsCodec {
                 previousStreamId = prevStreamId,
                 queueOrigin = origin,
                 screenOn = conditions.screenOn,
-                outputRoute = conditions.outputRoute
+                outputRoute = conditions.outputRoute,
+                candidateCount = candidateCount,
+                candidateUploaderShare = candidateUploaderShare
             ),
             item = CandidateItem(
                 streamId = streamId,
@@ -367,7 +388,7 @@ object RawInputsCodec {
         )
     }
 
-    private val SUPPORTED = setOf(VERSION_2, VERSION_3, LEGACY_4, LEGACY_5, LEGACY_6, VERSION_7, VERSION)
+    private val SUPPORTED = setOf(VERSION_2, VERSION_3, LEGACY_4, LEGACY_5, LEGACY_6, VERSION_7, VERSION_8, VERSION)
 
     private fun writeOptionalDouble(buf: ByteBuffer, value: Double?) {
         if (value != null) {

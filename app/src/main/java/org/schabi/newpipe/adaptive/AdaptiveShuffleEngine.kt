@@ -91,6 +91,8 @@ class AdaptiveShuffleEngine(
         baseline: Boolean = false
     ): DecisionResult {
         require(candidates.isNotEmpty()) { "candidates must not be empty" }
+        // The decision's own candidate set is its shape (spec section 6.8).
+        val context = context.withShape(candidates.map { it.uploader })
         return synchronized(lock) {
             val scaledVectors = Array(candidates.size) { i ->
                 scaler.transform(FeatureExtractor.buildRawVector(context, candidates[i]))
@@ -223,6 +225,16 @@ class AdaptiveShuffleEngine(
             candidateStreamIdsBlob = RawInputsCodec.encodeStreamIds(listOf(chosen.streamId))
         )
         DecisionResult(chosen, score, store.insertPending(event), greedy = false, chooser = Chooser.USER)
+    }
+
+    // The context a pending decision was made in, as it was scored.
+    fun decisionContext(eventId: Long): DecisionContext? = synchronized(lock) {
+        val event = store.getPendingById(eventId) ?: return@synchronized null
+        try {
+            RawInputsCodec.decode(event.rawInputsBlob).context
+        } catch (t: RuntimeException) {
+            null
+        }
     }
 
     // The candidate a pending decision chose, as it was scored.
@@ -373,10 +385,16 @@ class AdaptiveShuffleEngine(
         var skipped = 0
         val resolved = store.getAllResolvedOrdered()
         val timesByStream = resolved.groupBy { it.streamId }.mapValues { (_, es) -> es.map { it.chosenAt }.sorted() }
+        // Decisions recorded before schema v7 have no shape; it is derived from their
+        // stored candidate lists, with uploaders as the streams table has them now.
+        val candidatesOf = resolved.associate { e ->
+            e.id to (e.candidateStreamIdsBlob?.let { b -> runCatching { RawInputsCodec.decodeStreamIds(b).toList() }.getOrNull() } ?: emptyList())
+        }
+        val uploaders = store.getStreamUploaders(candidatesOf.values.flatten().toSet())
         for (e in resolved) {
             val storedReward = e.reward ?: continue
             val decoded = try {
-                RawInputsCodec.decode(e.rawInputsBlob)
+                withRecoveredShape(RawInputsCodec.decode(e.rawInputsBlob), candidatesOf[e.id].orEmpty(), uploaders)
             } catch (t: RuntimeException) {
                 skipped += 1
                 continue
@@ -427,6 +445,17 @@ class AdaptiveShuffleEngine(
         val delta = (bonus / AdaptiveShuffleConfig.REWARD_REWIND_DENSITY).roundToInt()
             .coerceIn(0, AdaptiveShuffleConfig.REWIND_CAP.toInt())
         return RawInputsCodec.Outcome(ratio, delta)
+    }
+
+    // A user pick's own candidate list is just the track chosen, which says nothing about
+    // the queue, so an older user pick keeps the unknown shape.
+    internal fun withRecoveredShape(
+        d: RawInputsCodec.Decoded,
+        candidates: List<Long>,
+        uploaders: Map<Long, String?>
+    ): RawInputsCodec.Decoded {
+        if (d.context.candidateCount != null || candidates.isEmpty() || d.chooser == Chooser.USER) return d
+        return d.copy(context = d.context.withShape(candidates.map { uploaders[it] }))
     }
 
     // Times sorted ascending; how many fall in [from, to).

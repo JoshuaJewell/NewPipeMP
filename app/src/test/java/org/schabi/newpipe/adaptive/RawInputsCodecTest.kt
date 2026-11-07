@@ -128,7 +128,7 @@ class RawInputsCodecTest {
 
     // The trailer is a greedy byte, an outcome-present byte, a double and an int, then
     // v8's int, byte and empty rejected item.
-    private val trailerBytes = 1 + 1 + 8 + 4 + 4 + 1 + 4
+    private val trailerBytes = 1 + 1 + 8 + 4 + 4 + 1 + 4 + V9_EXTRA_BYTES
 
     // The on-device v1.1 build wrote the v2 body and the listening/event block, with no
     // trailer, as version 5; version 6 added 154 bytes after it.
@@ -173,15 +173,27 @@ class RawInputsCodecTest {
     @Test fun `attaching an outcome upgrades a legacy blob to the current version`() {
         val outcome = RawInputsCodec.Outcome(1.0, 0)
         val upgraded = RawInputsCodec.withOutcome(legacy(6, extra = 154), outcome)
-        assertEquals(8, upgraded[0].toInt())
+        assertEquals(9, upgraded[0].toInt())
         val decoded = RawInputsCodec.decode(upgraded)
         assertEquals(richItem, decoded.item)
         assertEquals(outcome, decoded.outcome)
     }
 
+    @Test fun `the candidate shape round trips, and v8 blobs decode without one`() {
+        val shaped = richContext.copy(candidateCount = 12, candidateUploaderShare = 1.0 / 12)
+        val v9 = RawInputsCodec.encode(shaped, richItem, outcome = RawInputsCodec.Outcome(0.9, 0))
+        assertEquals(shaped, RawInputsCodec.decode(v9).context)
+        assertEquals(shaped, RawInputsCodec.decode(RawInputsCodec.withOutcome(v9, RawInputsCodec.Outcome(0.5, 0))).context)
+        val v8 = v9.copyOf(v9.size - V9_EXTRA_BYTES)
+        v8[0] = 8
+        val decoded = RawInputsCodec.decode(v8)
+        assertEquals(richContext, decoded.context)
+        assertEquals(RawInputsCodec.Outcome(0.9, 0), decoded.outcome)
+    }
+
     @Test fun `v7 blobs decode with the outcome and chooser they had`() {
-        val v8 = RawInputsCodec.encode(richContext, richItem, greedy = true, outcome = RawInputsCodec.Outcome(0.8, 1), chooser = Chooser.BASELINE)
-        val v7 = v8.copyOf(v8.size - V8_EXTRA_BYTES)
+        val v9 = RawInputsCodec.encode(richContext, richItem, greedy = true, outcome = RawInputsCodec.Outcome(0.8, 1), chooser = Chooser.BASELINE)
+        val v7 = v9.copyOf(v9.size - V8_EXTRA_BYTES - V9_EXTRA_BYTES)
         v7[0] = 7
         val decoded = RawInputsCodec.decode(v7)
         assertEquals(richItem, decoded.item)
@@ -249,8 +261,9 @@ class RawInputsCodecTest {
 
     companion object {
         // The v3 trailer, then v8's partial rewinds, returned flag and empty rejected item.
+        private const val V9_EXTRA_BYTES = 1 + 4 + 8
         private const val V8_EXTRA_BYTES = 4 + 1 + 4
-        private const val V3_TRAILER_BYTES = 1 + 1 + 8 + 4 + V8_EXTRA_BYTES
+        private const val V3_TRAILER_BYTES = 1 + 1 + 8 + 4 + V8_EXTRA_BYTES + V9_EXTRA_BYTES
 
         // Builds the blob a v2 build would have written for the same inputs.
         fun downgradeToV2(v3: ByteArray): ByteArray {

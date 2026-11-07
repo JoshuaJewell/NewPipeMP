@@ -38,6 +38,11 @@ object FeatureSchema {
     // flags, the cyclic time pairs and the bias pass through. An unplayed track's
     // completion rate is the usual one (0.8), not 0.5, for the same reason as the leave
     // point. The scaled set is part of the schema hash.
+    // Schema v7 adds the shape of each decision's candidate set (spec section 6.8): the
+    // share of distinct uploaders among the candidates, and their number (log scale). A
+    // one-artist playlist gives few candidates, all by one uploader; the mega playlist a
+    // full sample by many. With the context known, completions that come from being in a
+    // narrow queue the listener chose are not all credited to the tracks' own offsets.
     val names: List<String> = listOf(
         "hour_sin", "hour_cos", "dow_sin", "dow_cos",
         "session_position", "recent_skip_rate",
@@ -55,6 +60,7 @@ object FeatureSchema {
         "volume_ups_per_listen", "volume_downs_per_listen",
         "mean_leave_point", "leave_point_spread",
         "has_listen_history",
+        "candidate_uploader_share", "log_candidate_count",
         "bias"
     )
 
@@ -95,9 +101,11 @@ object FeatureSchema {
     const val MEAN_LEAVE_POINT = 34
     const val LEAVE_POINT_SPREAD = 35
     const val HAS_LISTEN_HISTORY = 36
-    const val BIAS = 37
+    const val CANDIDATE_UPLOADER_SHARE = 37
+    const val LOG_CANDIDATE_COUNT = 38
+    const val BIAS = 39
 
-    const val DIMENSION: Int = 38
+    const val DIMENSION: Int = 40
 
     // Indices whose values vary on a continuous unbounded scale and benefit from running
     // standardisation. Bounded or one-hot features pass through untouched.
@@ -119,7 +127,9 @@ object FeatureSchema {
         VOLUME_UPS,
         VOLUME_DOWNS,
         MEAN_LEAVE_POINT,
-        LEAVE_POINT_SPREAD
+        LEAVE_POINT_SPREAD,
+        CANDIDATE_UPLOADER_SHARE,
+        LOG_CANDIDATE_COUNT
     )
 
     // Stable SHA-256 over the feature name list. Any reorder, rename or addition
@@ -173,6 +183,8 @@ object FeatureSchema {
         "mean_leave_point" to "Average point in this track at which you leave it",
         "leave_point_spread" to "How much that leave point varies between listens",
         "has_listen_history" to "Track has enough recorded listens for the listen features",
+        "candidate_uploader_share" to "Share of distinct uploaders among the tracks on offer (low: one artist's playlist)",
+        "log_candidate_count" to "Number of tracks on offer for the pick (log scale; few: a small queue)",
         "bias" to "Constant baseline (model's average reward)"
     )
 }
@@ -188,8 +200,26 @@ data class DecisionContext(
     val previousStreamId: Long?,
     val queueOrigin: QueueOrigin,
     val screenOn: Boolean = false,
-    val outputRoute: OutputRoute = OutputRoute.SPEAKER
-)
+    val outputRoute: OutputRoute = OutputRoute.SPEAKER,
+    // The shape of the candidate set the pick was made from (CandidateShape); null where
+    // unknown, as for decisions recorded before schema v7 with no candidate list.
+    val candidateCount: Int? = null,
+    val candidateUploaderShare: Double? = null
+) {
+    fun withShape(uploaders: List<String?>): DecisionContext {
+        if (uploaders.isEmpty()) return this
+        return copy(candidateCount = uploaders.size, candidateUploaderShare = CandidateShape.uploaderShare(uploaders))
+    }
+}
+
+// The shape of a decision's candidate set (spec section 6.8).
+object CandidateShape {
+    // Distinct uploaders over candidates. Unknown or blank uploaders count as one.
+    fun uploaderShare(uploaders: List<String?>): Double {
+        if (uploaders.isEmpty()) return 1.0
+        return uploaders.map { it?.trim().orEmpty() }.toSet().size.toDouble() / uploaders.size
+    }
+}
 
 // Ordinals are persisted by RawInputsCodec; append new values, never reorder.
 enum class QueueOrigin { SINGLE, PLAYLIST, CHANNEL, OTHER }

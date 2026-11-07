@@ -52,7 +52,9 @@ class FeatureSchemaTest {
                 previousStreamId = null,
                 queueOrigin = QueueOrigin.values()[rng.nextInt(4)],
                 screenOn = rng.nextBoolean(),
-                outputRoute = OutputRoute.values()[rng.nextInt(4)]
+                outputRoute = OutputRoute.values()[rng.nextInt(4)],
+                candidateCount = 1 + rng.nextInt(30),
+                candidateUploaderShare = 0.05 + 0.95 * rng.nextDouble()
             )
             val listens = rng.nextInt(12)
             val leaveMean = rng.nextDouble()

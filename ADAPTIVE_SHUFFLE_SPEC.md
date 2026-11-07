@@ -350,6 +350,14 @@ Replay (7.2): completion rank correlation 0.167 to 0.205 on the synthetic log, 0
 
 Raw-inputs format v8 stores the chooser, the displaced item, and the outcome's partial rewinds and return flag. A rebuild replays all of this the same way.
 
+### 6.8 Queue shape
+
+Listening through a one-artist playlist says partly "I chose this artist now", not only "these tracks are good anywhere"; without knowing the queue, the model credited those completions to the tracks' own offsets, which then lifted them in the mega playlist. Schema v7 adds two context features describing each decision's candidate set: candidate_uploader_share (distinct uploaders over candidates; blank uploaders count as one) and log_candidate_count. Both are scaled. With them in the joint fit, the lift that comes with a narrow queue is learnt as an effect of the queue, so less of it reaches the offsets.
+
+They are defined over the candidates, not the whole queue, because the candidates are what every decision since v1.1 recorded, so live decisions and rebuilt history share one definition. A decision computes them from its own candidates; a user pick takes the shape of the model's pick it displaced (same queue, moments apart), or none; the detail screen's rating uses a 30-track sample of the queue, the size a pick uses. On a rebuild, decisions recorded before v7 get theirs from their stored candidate lists and today's uploaders; older user picks, and decisions with no candidate list, use a full varied sample (30 candidates, share 0.85, the v1.1 export's mean: every one of its 703 recorded candidate sets had 27 to 30 candidates and a share of 0.66 to 1.0). Raw-inputs format v9 stores the shape.
+
+Replay over the v1.1 export cannot show the effect, as that history holds no narrow queues (0.338 against 0.334, within noise); a unit test trains on albums heard in one-artist queues between varied wide-queue listening and checks the shape takes the lift.
+
 ## 7. Validation
 
 ### 7.1 Repetition metrics (new, live and in replay)

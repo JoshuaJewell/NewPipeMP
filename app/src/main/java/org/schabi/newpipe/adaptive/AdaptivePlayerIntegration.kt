@@ -212,7 +212,9 @@ class AdaptivePlayerIntegration(
         val pairs = materialiser.materialisePairs(listOf(item) + sample, previousStreamId)
         val mine = pairs.indexOfFirst { it.first === item }
         if (mine < 0) return null
+        // Shaped like a pick's candidate set: a sample of the queue the size a pick uses.
         val context = buildContext(queue?.let { originOf(it) } ?: QueueOrigin.OTHER)
+            .withShape(pairs.take(AdaptiveShuffleConfig.CANDIDATE_SAMPLE_CAP).map { it.second.uploader })
         val scores = engine.predict(pairs.map { it.second }, context)
         val own = scores[mine]
         val rest = scores.filterIndexed { i, _ -> i != mine }
@@ -235,9 +237,17 @@ class AdaptivePlayerIntegration(
 
     private fun recordUserPick(playQueue: PlayQueue, item: PlayQueueItem, streamId: Long?, now: Long) {
         // The model's pick waiting to play, if this displaced it.
-        val displaced = lastDecision?.takeIf { it.first != streamId }?.let { engine.decisionItem(it.second) }
+        val displacedEvent = lastDecision?.takeIf { it.first != streamId }?.second
+        val displaced = displacedEvent?.let { engine.decisionItem(it) }
         val chosen = materialiser.materialisePairs(listOf(item), previousStreamId).firstOrNull()?.second ?: return
-        val pick = engine.recordUserPick(chosen, buildContext(originOf(playQueue)), displaced)
+        // Chosen from the same queue as the model's pick it displaced, moments later, so it
+        // shares that pick's candidate shape; unknown without one (spec section 6.8).
+        val shape = displacedEvent?.let { engine.decisionContext(it) }
+        val context = buildContext(originOf(playQueue)).copy(
+            candidateCount = shape?.candidateCount,
+            candidateUploaderShare = shape?.candidateUploaderShare
+        )
+        val pick = engine.recordUserPick(chosen, context, displaced)
         engine.captureSnapshot(chosen.streamId, repository.getRestartCount(chosen.streamId))
         resolutionDecisionTimestamps[chosen.streamId] = now
         telemetry?.logDecision(

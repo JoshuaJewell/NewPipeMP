@@ -301,4 +301,52 @@ class AdaptiveShuffleEngineTest {
         assertEquals(12, report.fromStoredOutcome)
         assertTrue(offsetOf(e, 50) > 0.0)
     }
+
+    @Test fun `a decision records the shape of its candidates`() {
+        val store = InMemoryStore()
+        val e = engine(store)
+        val album = (1L..6L).map { fixtureItem(it, uploader = "Carly Rae Jepsen") }
+        e.chooseNext(album, fixtureContext())
+        val ctx = RawInputsCodec.decode(store.events.values.single().rawInputsBlob).context
+        assertEquals(6, ctx.candidateCount)
+        assertEquals(1.0 / 6.0, ctx.candidateUploaderShare!!, 1e-12)
+    }
+
+    @Test fun `older decisions get their shape from their stored candidates, older user picks do not`() {
+        val e = engine()
+        val unshaped = RawInputsCodec.Decoded(fixtureContext(), fixtureItem(1))
+        val uploaders = mapOf(1L to "A", 2L to "A", 3L to "B", 4L to null)
+        val shaped = e.withRecoveredShape(unshaped, listOf(1L, 2L, 3L, 4L), uploaders)
+        assertEquals(4, shaped.context.candidateCount)
+        assertEquals(0.75, shaped.context.candidateUploaderShare!!, 1e-12)
+        val pick = unshaped.copy(chooser = Chooser.USER)
+        assertNull(e.withRecoveredShape(pick, listOf(1L), uploaders).context.candidateCount)
+        val known = unshaped.copy(context = unshaped.context.copy(candidateCount = 30, candidateUploaderShare = 0.9))
+        assertEquals(known, e.withRecoveredShape(known, listOf(1L, 2L), uploaders))
+    }
+
+    // Albums played through in one-artist queues, against a varied library heard in a
+    // wide one: the lift that comes with the narrow queue goes to the queue's shape.
+    @Test fun `completions in narrow queues are learnt as a narrow-queue effect`() {
+        val store = InMemoryStore()
+        val e = engine(store)
+        val rng = Random(11)
+        var next = 1L
+        repeat(8) { session ->
+            val wide = (0 until 30).map { fixtureItem(next++, uploader = "U${rng.nextInt(1000)}") }
+            repeat(15) {
+                val d = e.chooseNext(wide, fixtureContext())
+                e.captureSnapshot(d.chosen.streamId, 0)
+                e.resolveOutcome(d.chosen.streamId, RawInputsCodec.Outcome(0.2 + 0.6 * rng.nextDouble(), 0))
+            }
+            val album = (0 until 10).map { fixtureItem(next++, uploader = "Artist $session") }
+            repeat(10) {
+                val d = e.chooseNext(album, fixtureContext())
+                e.captureSnapshot(d.chosen.streamId, 0)
+                e.resolveOutcome(d.chosen.streamId, RawInputsCodec.Outcome(1.0, 0))
+            }
+        }
+        // Lower share, higher reward: a negative weight on the share.
+        assertTrue(e.theta()[FeatureSchema.CANDIDATE_UPLOADER_SHARE] < -0.05)
+    }
 }

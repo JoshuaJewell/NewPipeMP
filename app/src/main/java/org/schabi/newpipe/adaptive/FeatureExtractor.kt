@@ -89,6 +89,13 @@ object FeatureExtractor {
 
         putListenEvents(v, item.listenEvents)
 
+        // The shape of the candidate set; where unknown (older decisions), a full and
+        // varied sample, as every recorded decision before it was (spec section 6.8).
+        v[FeatureSchema.CANDIDATE_UPLOADER_SHARE] = context.candidateUploaderShare
+            ?: AdaptiveShuffleConfig.UNKNOWN_CANDIDATE_UPLOADER_SHARE
+        val count = context.candidateCount ?: AdaptiveShuffleConfig.CANDIDATE_SAMPLE_CAP
+        v[FeatureSchema.LOG_CANDIDATE_COUNT] = ln(1.0 + count.coerceAtLeast(0))
+
         v[FeatureSchema.BIAS] = 1.0
 
         return v
