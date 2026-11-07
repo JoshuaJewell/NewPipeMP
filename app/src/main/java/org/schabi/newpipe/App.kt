@@ -37,6 +37,7 @@ import org.schabi.newpipe.util.BridgeStateSaverInitializer
 import org.schabi.newpipe.util.Localization
 import org.schabi.newpipe.util.ServiceHelper
 import org.schabi.newpipe.util.StateSaver
+import org.schabi.newpipe.util.StreamMetadataRepair
 import org.schabi.newpipe.util.image.ImageStrategy
 import org.schabi.newpipe.util.image.PreferredImageQuality
 import org.schabi.newpipe.util.potoken.PoTokenProviderImpl
@@ -137,6 +138,8 @@ open class App :
                 { /* done */ },
                 { e -> Log.w(TAG, "Rating backfill failed", e) }
             )
+
+        repairDamagedTitles(prefs)
     }
 
     override fun newImageLoader(context: Context): ImageLoader = ImageLoader
@@ -295,7 +298,29 @@ open class App :
 
     protected open fun isDisposedRxExceptionsReported(): Boolean = false
 
+    // The offline stream lookup once replaced tracks' titles with their uploader's URL
+    // (StreamMetadataDamage). Repairs the rows it damaged, from downloaded files or by
+    // fetching them again; repeats on later launches until none is left, at most three
+    // times, so a stream that cannot be repaired does not keep it running.
+    private fun repairDamagedTitles(prefs: android.content.SharedPreferences) {
+        val attempts = prefs.getInt(TITLE_REPAIR_ATTEMPTS_KEY, 0)
+        if (attempts >= TITLE_REPAIR_MAX_ATTEMPTS) return
+        StreamMetadataRepair.repairDamagedTitles(this, true)
+            .subscribe(
+                { report ->
+                    val done = report.remaining == 0
+                    prefs.edit()
+                        .putInt(TITLE_REPAIR_ATTEMPTS_KEY, if (done) TITLE_REPAIR_MAX_ATTEMPTS else attempts + 1)
+                        .apply()
+                },
+                { e -> Log.w(TAG, "Title repair failed", e) }
+            )
+    }
+
     companion object {
+        private const val TITLE_REPAIR_ATTEMPTS_KEY = "stream_title_repair_v1_attempts"
+        private const val TITLE_REPAIR_MAX_ATTEMPTS = 3
+
         const val PACKAGE_NAME: String = BuildConfig.APPLICATION_ID
         private val TAG = App::class.java.toString()
 

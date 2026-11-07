@@ -145,11 +145,17 @@ public class DebugSettingsFragment extends BasePreferenceFragment {
                     Toast.LENGTH_SHORT).show();
 
             disposables.add(
-                StreamMetadataRepair.repairAllCorruptedEntries(requireContext())
+                StreamMetadataRepair.repairDamagedTitles(requireContext(), true)
+                    .flatMap(titles -> StreamMetadataRepair
+                            .repairAllCorruptedEntries(requireContext())
+                            .map(other -> "Titles: " + titles.damaged + " damaged, "
+                                    + titles.fromFile + " fixed from files, "
+                                    + titles.fromNetwork + " fetched again, "
+                                    + titles.remaining + " left. Other fields: "
+                                    + other + " entries"))
                     .observeOn(AndroidSchedulers.mainThread())
                     .subscribe(
-                        repairedCount -> Toast.makeText(requireContext(),
-                            "Repaired " + repairedCount + " corrupted entries",
+                        summary -> Toast.makeText(requireContext(), summary,
                             Toast.LENGTH_LONG).show(),
                         error -> ErrorUtil.showUiErrorSnackbar(
                             DebugSettingsFragment.this,

@@ -78,8 +78,9 @@ public final class StreamMetadataRepair {
                     final StreamEntity entity = entities.get(0);
 
                     // Check if entity needs repair (has empty/corrupted metadata)
-                    if (entity.getTitle() != null && !entity.getTitle().isEmpty()
-                            && entity.getUploader() != null && !entity.getUploader().isEmpty()
+                    if (!StreamMetadataDamage.isBadTitle(entity.getTitle(), entity.getUrl(),
+                            entity.getUploaderUrl())
+                            && !StreamMetadataDamage.isBadUploader(entity.getUploader())
                             && entity.getThumbnailUrl() != null
                             && !entity.getThumbnailUrl().isEmpty()) {
                         // Metadata looks good, skip
@@ -103,14 +104,15 @@ public final class StreamMetadataRepair {
                     // Update the entity with extracted metadata
                     boolean updated = false;
 
-                    if ((entity.getTitle() == null || entity.getTitle().isEmpty())
+                    if (StreamMetadataDamage.isBadTitle(entity.getTitle(), entity.getUrl(),
+                            entity.getUploaderUrl())
                             && extracted.title != null && !extracted.title.isEmpty()) {
                         entity.setTitle(extracted.title);
                         updated = true;
                         Log.i(TAG, "Updated title to: " + extracted.title);
                     }
 
-                    if ((entity.getUploader() == null || entity.getUploader().isEmpty())
+                    if (StreamMetadataDamage.isBadUploader(entity.getUploader())
                             && extracted.artist != null && !extracted.artist.isEmpty()) {
                         entity.setUploader(extracted.artist);
                         updated = true;
@@ -198,6 +200,15 @@ public final class StreamMetadataRepair {
             result.artist = artist;
             result.album = album;
             result.albumArtBytes = albumArt;
+            final String durationMillis = retriever.extractMetadata(
+                    MediaMetadataRetriever.METADATA_KEY_DURATION);
+            if (durationMillis != null) {
+                try {
+                    result.durationSeconds = Long.parseLong(durationMillis.trim()) / 1000;
+                } catch (final NumberFormatException ignored) {
+                    // No usable duration
+                }
+            }
 
             return result;
         } catch (final Exception e) {
@@ -259,5 +270,133 @@ public final class StreamMetadataRepair {
         String artist;
         String album;
         byte[] albumArtBytes;
+        long durationSeconds = -1;
+    }
+
+    /** What {@link #repairDamagedTitles} did. */
+    public static final class Report {
+        /** Rows found damaged. */
+        public int damaged;
+        /** Repaired from a downloaded file's tags or name. */
+        public int fromFile;
+        /** Repaired by fetching the stream's info again. */
+        public int fromNetwork;
+        /** Left damaged: no usable file, and no fetch (offline, failed, or over the cap). */
+        public int remaining;
+    }
+
+    /** At most this many streams are fetched again per run. */
+    private static final int MAX_NETWORK_REPAIRS = 200;
+
+    /**
+     * Repairs streams whose title is missing or is a URL (see {@link StreamMetadataDamage}):
+     * from the downloaded file's tags, then from its name, then, if allowed, by fetching the
+     * stream's info again. Fills a missing uploader and duration from the same source.
+     *
+     * @param context      the context
+     * @param allowNetwork whether streams with no usable file may be fetched again
+     * @return what was repaired
+     */
+    public static Single<Report> repairDamagedTitles(@NonNull final Context context,
+                                                     final boolean allowNetwork) {
+        return Single.fromCallable(() -> {
+            final AppDatabase database = NewPipeDatabase.getInstance(context);
+            final StreamDAO streamDAO = database.streamDAO();
+            final OfflineFileMappingDAO mappingDAO = database.offlineFileMappingDAO();
+            final Report report = new Report();
+            int fetched = 0;
+            for (final StreamEntity entity : streamDAO.getStreamsWithSuspectTitlesBlocking()) {
+                if (!StreamMetadataDamage.isBadTitle(entity.getTitle(), entity.getUrl(),
+                        entity.getUploaderUrl())) {
+                    continue;
+                }
+                report.damaged++;
+                try {
+                    if (repairFromFile(context, streamDAO, mappingDAO, entity)) {
+                        report.fromFile++;
+                    } else if (allowNetwork && fetched < MAX_NETWORK_REPAIRS) {
+                        fetched++;
+                        if (repairFromNetwork(streamDAO, entity)) {
+                            report.fromNetwork++;
+                        } else {
+                            report.remaining++;
+                        }
+                    } else {
+                        report.remaining++;
+                    }
+                } catch (final Exception e) {
+                    Log.w(TAG, "Could not repair " + entity.getUrl(), e);
+                    report.remaining++;
+                }
+            }
+            Log.i(TAG, "Title repair: " + report.damaged + " damaged, " + report.fromFile
+                    + " from files, " + report.fromNetwork + " fetched, " + report.remaining
+                    + " left");
+            return report;
+        }).subscribeOn(Schedulers.io());
+    }
+
+    private static boolean repairFromFile(@NonNull final Context context,
+                                          @NonNull final StreamDAO streamDAO,
+                                          @NonNull final OfflineFileMappingDAO mappingDAO,
+                                          @NonNull final StreamEntity entity) {
+        final OfflineFileMappingEntity mapping = mappingDAO.getByStreamUrlBlocking(
+                entity.getServiceId(), entity.getUrl());
+        if (mapping == null || mapping.getLocalFileUri() == null) {
+            return false;
+        }
+        final String fileUri = mapping.getLocalFileUri();
+        final MetadataExtractionResult tags = extractMetadataFromFile(context, fileUri);
+        String title = tags != null ? tags.title : null;
+        String artist = tags != null ? tags.artist : null;
+        if (StreamMetadataDamage.isBadTitle(title, entity.getUrl(), entity.getUploaderUrl())) {
+            String name = Uri.parse(fileUri).getLastPathSegment();
+            if (name != null) {
+                name = name.substring(name.lastIndexOf('/') + 1).replaceFirst("^.*:", "");
+                final StreamMetadataDamage.FromFileName parsed =
+                        StreamMetadataDamage.fromFileName(name);
+                if (parsed != null) {
+                    title = parsed.getTitle();
+                    if (StreamMetadataDamage.isBadUploader(artist)) {
+                        artist = parsed.getArtist();
+                    }
+                }
+            }
+        }
+        if (StreamMetadataDamage.isBadTitle(title, entity.getUrl(), entity.getUploaderUrl())) {
+            return false;
+        }
+        entity.setTitle(title);
+        if (StreamMetadataDamage.isBadUploader(entity.getUploader())
+                && !StreamMetadataDamage.isBadUploader(artist)) {
+            entity.setUploader(artist);
+        }
+        if (entity.getDuration() <= 0 && tags != null && tags.durationSeconds > 0) {
+            entity.setDuration(tags.durationSeconds);
+        }
+        streamDAO.upsert(entity);
+        return true;
+    }
+
+    private static boolean repairFromNetwork(@NonNull final StreamDAO streamDAO,
+                                             @NonNull final StreamEntity entity) {
+        try {
+            final org.schabi.newpipe.extractor.stream.StreamInfo info =
+                    org.schabi.newpipe.extractor.stream.StreamInfo.getInfo(
+                            org.schabi.newpipe.extractor.NewPipe.getService(
+                                    entity.getServiceId()), entity.getUrl());
+            if (StreamMetadataDamage.isBadTitle(info.getName(), info.getUrl(),
+                    info.getUploaderUrl())) {
+                return false;
+            }
+            final StreamEntity fresh = new StreamEntity(info);
+            // Keep the row (and with it playlists, history and statistics) it belongs to
+            fresh.setUrl(entity.getUrl());
+            streamDAO.upsert(fresh);
+            return true;
+        } catch (final Exception e) {
+            Log.w(TAG, "Could not fetch " + entity.getUrl() + ": " + e.getMessage());
+            return false;
+        }
     }
 }

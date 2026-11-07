@@ -13,6 +13,7 @@ import org.schabi.newpipe.database.BasicDAO
 import org.schabi.newpipe.database.stream.model.StreamEntity
 import org.schabi.newpipe.database.stream.model.StreamEntity.Companion.STREAM_ID
 import org.schabi.newpipe.extractor.stream.StreamType
+import org.schabi.newpipe.util.StreamMetadataDamage
 import org.schabi.newpipe.util.StreamTypeUtil
 
 /**
@@ -55,6 +56,15 @@ abstract class StreamDAO : BasicDAO<StreamEntity> {
     @Query("UPDATE streams SET user_rating = :rating WHERE uid = :streamId")
     abstract fun updateRating(streamId: Long, rating: Int?): Int
 
+    // Rows whose title is missing or looks like a URL: candidates for StreamMetadataRepair.
+    @Query(
+        """
+        SELECT * FROM streams
+        WHERE trim(title) = '' OR title = url OR title = uploader_url OR title LIKE '%://%' OR title LIKE '%/channel/%'
+        """
+    )
+    abstract fun getStreamsWithSuspectTitlesBlocking(): List<StreamEntity>
+
     @Query("SELECT title FROM streams WHERE uid = :streamId")
     abstract fun getTitleByIdBlocking(streamId: Long): String?
 
@@ -69,7 +79,8 @@ abstract class StreamDAO : BasicDAO<StreamEntity> {
 
     @Query(
         """
-        SELECT uid, stream_type, textual_upload_date, upload_date, is_upload_date_approximation, duration, user_rating
+        SELECT uid, stream_type, textual_upload_date, upload_date, is_upload_date_approximation, duration, user_rating,
+            title, uploader, uploader_url, thumbnail_url
         FROM streams WHERE url = :url AND service_id = :serviceId
         """
     )
@@ -127,9 +138,27 @@ abstract class StreamDAO : BasicDAO<StreamEntity> {
                 newerStream.isUploadDateApproximation = existentMinimalStream.isUploadDateApproximation
             }
 
-            if (existentMinimalStream.duration > 0 && newerStream.duration < 0) {
+            if (existentMinimalStream.duration > 0 && newerStream.duration <= 0) {
                 newerStream.duration = existentMinimalStream.duration
             }
+        }
+
+        // Never replace good metadata with damaged or missing metadata (see
+        // StreamMetadataDamage): a partial StreamInfo, such as one an offline path built,
+        // must not wipe what a full extraction stored.
+        if (StreamMetadataDamage.isBadTitle(newerStream.title, newerStream.url, newerStream.uploaderUrl) &&
+            !StreamMetadataDamage.isBadTitle(existentMinimalStream.title, newerStream.url, existentMinimalStream.uploaderUrl)
+        ) {
+            newerStream.title = existentMinimalStream.title!!
+        }
+        if (StreamMetadataDamage.isBadUploader(newerStream.uploader) &&
+            !StreamMetadataDamage.isBadUploader(existentMinimalStream.uploader)
+        ) {
+            newerStream.uploader = existentMinimalStream.uploader!!
+            if (newerStream.uploaderUrl.isNullOrBlank()) newerStream.uploaderUrl = existentMinimalStream.uploaderUrl
+        }
+        if (newerStream.thumbnailUrl.isNullOrBlank() && !existentMinimalStream.thumbnailUrl.isNullOrBlank()) {
+            newerStream.thumbnailUrl = existentMinimalStream.thumbnailUrl
         }
 
         // Preserve user rating when updating stream metadata
@@ -241,7 +270,19 @@ abstract class StreamDAO : BasicDAO<StreamEntity> {
         var duration: Long,
 
         @ColumnInfo(name = StreamEntity.STREAM_USER_RATING)
-        var userRating: Int? = null
+        var userRating: Int? = null,
+
+        @ColumnInfo(name = StreamEntity.STREAM_TITLE)
+        var title: String? = null,
+
+        @ColumnInfo(name = StreamEntity.STREAM_UPLOADER)
+        var uploader: String? = null,
+
+        @ColumnInfo(name = StreamEntity.STREAM_UPLOADER_URL)
+        var uploaderUrl: String? = null,
+
+        @ColumnInfo(name = StreamEntity.STREAM_THUMBNAIL_URL)
+        var thumbnailUrl: String? = null
     )
 
     /**

@@ -338,17 +338,31 @@ public final class ExtractorHelper {
                             + "uploaderUrl: '" + entity.getUploaderUrl() + "'");
                 }
 
-                // Convert StreamEntity to StreamInfo
+                // A row this lookup damaged before (see StreamMetadataDamage) is no basis
+                // for the stream's info: load it from the network instead
+                if (StreamMetadataDamage.isBadTitle(entity.getTitle(), entity.getUrl(),
+                        entity.getUploaderUrl())) {
+                    return Maybe.empty();
+                }
+
+                // Convert StreamEntity to StreamInfo. The constructor takes (serviceId, url,
+                // originalUrl, streamType, id, name, ageLimit); passing the title, uploader,
+                // uploader URL and duration in those places made the uploader's URL the
+                // track's name, and recording the view wrote that over the stored row.
                 final org.schabi.newpipe.extractor.stream.StreamInfo streamInfo =
                         new org.schabi.newpipe.extractor.stream.StreamInfo(
                                 entity.getServiceId(),
                                 entity.getUrl(),
-                                entity.getTitle(),
+                                entity.getUrl(),
                                 entity.getStreamType(),
-                                entity.getUploader(),
-                                entity.getUploaderUrl() != null ? entity.getUploaderUrl() : "",
-                                (int) entity.getDuration()
+                                entity.getUrl(),
+                                entity.getTitle(),
+                                0
                         );
+                streamInfo.setUploaderName(entity.getUploader());
+                streamInfo.setUploaderUrl(
+                        entity.getUploaderUrl() != null ? entity.getUploaderUrl() : "");
+                streamInfo.setDuration(entity.getDuration());
 
                 // Set thumbnails from database
                 streamInfo.setThumbnails(
